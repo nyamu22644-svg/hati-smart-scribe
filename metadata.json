@@ -1,0 +1,8 @@
+
+{
+  "name": "Medical Passport - Privacy-First Health Vault",
+  "description": "A secure medical record repository that uses client-side AES-256 encryption and Gemini-3 AI to analyze prescriptions, lab reports, and medical documents without compromising patient privacy.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
