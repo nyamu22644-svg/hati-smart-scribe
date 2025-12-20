@@ -25,15 +25,17 @@ export const SecureScannerGateway: React.FC<SecureScannerGatewayProps> = ({ onPD
   // If camera is already open, show it directly (no need to re-check)
   if (showCamera) {
     return (
-      <SecureScanner
-        onClose={() => setShowCamera(false)}
-        onPDFGenerated={(pdfBlob, fileSize) => {
-          if (onPDFGenerated) {
-            onPDFGenerated(pdfBlob, fileSize);
-          }
-          // Camera will auto-close after success
-        }}
-      />
+      <>
+        <SecureScanner
+          onClose={() => setShowCamera(false)}
+          onPDFGenerated={(pdfBlob, fileSize) => {
+            if (onPDFGenerated) {
+              onPDFGenerated(pdfBlob, fileSize);
+            }
+            // Camera will auto-close after success
+          }}
+        />
+      </>
     );
   }
 

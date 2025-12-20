@@ -24,6 +24,9 @@ export const FeatureLock: React.FC<FeatureLockProps> = ({ feature, children, fal
 
   if (allowed) return <>{children}</>;
 
+  // Show children with unlock option if not allowed
+  // This allows viewing the content while prompting to unlock
+
   if (fallback) return <>{fallback}</>;
 
   const handleSubscribe = (planId: string) => {
@@ -75,6 +78,12 @@ export const FeatureLock: React.FC<FeatureLockProps> = ({ feature, children, fal
               className="w-full bg-gold hover:bg-amber-400 text-navy font-black py-4 rounded-2xl flex items-center justify-center gap-3 transition-all active:scale-95 shadow-lg"
             >
               Unlock Now <Zap className="w-4 h-4 fill-navy" />
+            </button>
+            <button
+              onClick={() => window.history.back()}
+              className="w-full bg-slate-600 hover:bg-slate-700 text-white font-bold py-3 rounded-2xl transition-all"
+            >
+              Go Back
             </button>
           </div>
         </div>
