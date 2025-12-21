@@ -807,6 +807,20 @@ const root = createRoot(document.getElementById('root')!);
 try {
   root.render(<App />);
   console.log('HATI: React rendering successful');
+  
+  // Register Service Worker for PWA installation
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/service-worker.js')
+        .then((registration) => {
+          console.log('HATI: Service Worker registered successfully:', registration);
+        })
+        .catch((error) => {
+          console.warn('HATI: Service Worker registration failed:', error);
+        });
+    });
+  }
+  
   setTimeout(() => {
     const mainContent = document.querySelector('main');
     console.log('HATI: Main content element found:', mainContent?.offsetHeight, 'px tall');
