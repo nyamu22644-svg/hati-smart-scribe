@@ -21,9 +21,9 @@ export const GuardianWaiverModal: React.FC<GuardianWaiverModalProps> = ({ isOpen
 
   return (
     <div className="fixed inset-0 z-[3000] flex items-center justify-center p-6 bg-navy/90 backdrop-blur-xl animate-in fade-in duration-300">
-      <div className="max-w-2xl w-full bg-white rounded-[40px] shadow-2xl border-4 border-crimson overflow-hidden relative animate-in zoom-in-95 duration-300">
+      <div className="max-w-2xl w-full bg-white rounded-[40px] shadow-2xl border-4 border-crimson overflow-hidden relative animate-in zoom-in-95 duration-300 flex flex-col max-h-[90vh]">
         {/* Header: Medical Alert Style */}
-        <div className="bg-crimson p-8 text-white">
+        <div className="bg-crimson p-8 text-white flex-shrink-0">
           <div className="flex items-center gap-4 mb-4">
             <div className="bg-white p-2 rounded-xl">
               <ShieldAlert className="text-crimson w-8 h-8" />
@@ -35,7 +35,9 @@ export const GuardianWaiverModal: React.FC<GuardianWaiverModalProps> = ({ isOpen
           </div>
         </div>
 
-        <div className="p-10 space-y-8">
+        {/* Scrollable Content */}
+        <div className="overflow-y-auto flex-1">
+          <div className="p-10 space-y-8">
           <div className="prose prose-slate max-w-none">
             <h4 className="text-navy font-black uppercase text-xs tracking-widest mb-4 flex items-center gap-2">
               <FileWarning className="w-4 h-4 text-crimson" /> Legal Terms & Conditions
@@ -103,8 +105,10 @@ export const GuardianWaiverModal: React.FC<GuardianWaiverModalProps> = ({ isOpen
               </span>
             </label>
           </div>
+        </div>
 
-          <div className="flex flex-col gap-4">
+        {/* Fixed Bottom Actions */}
+        <div className="border-t border-slate-100 p-8 space-y-4 flex-shrink-0 bg-white">
             <button
               disabled={!allAccepted}
               onClick={onAccept}

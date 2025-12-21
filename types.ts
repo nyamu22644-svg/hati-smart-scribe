@@ -76,6 +76,7 @@ export interface UserRecord {
   role?: UserRole;
   lastLogin?: number;
   guardian_settings?: GuardianInfo;
+  guardians?: GuardianInfo[];
   // Added inheritance property to UserRecord
   inheritance?: InheritanceInfo;
 }

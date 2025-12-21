@@ -42,20 +42,33 @@ export const GuardianSettings: React.FC<GuardianSettingsProps> = ({ user }) => {
     setShowWaiver(false);
     setLoading(true);
     try {
-      // 1. Update Firestore
+      // Get existing guardians array or create new one
+      const existingGuardians = user.guardians || [];
+      
+      // Add new guardian to array
+      const newGuardian: GuardianInfo = {
+        ...formData,
+        status: 'active'
+      };
+      
+      // 1. Update Firestore with guardians array
       await updateDoc(doc(db, 'users', user.uid), {
-        guardian_settings: {
-          ...formData,
-          status: 'active'
-        },
+        guardians: [...existingGuardians, newGuardian],
         updatedAt: serverTimestamp()
       });
 
       // 2. Guardian settings saved to Firestore
-      // In production, Cloud Function would send email invitation here
       console.log("HATI_GUARDIAN: Settings saved. Email notification queued.");
       
       alert("✅ HATI_GUARDIAN: Protocol Initiated!\n\nGuardian settings secured in vault.\n\nGuardian will be invited to access your vault in case of emergency.");
+      
+      // Reset form
+      setFormData({
+        guardianName: '',
+        guardianEmail: '',
+        guardianPhone: '',
+        inactivityThresholdDays: 90
+      });
     } catch (err) {
       console.error(err);
       alert("System failure. Access logs for details.");
@@ -105,11 +118,37 @@ export const GuardianSettings: React.FC<GuardianSettingsProps> = ({ user }) => {
             </div>
           </div>
 
+          {/* Show Existing Guardians */}
+          {user.guardians && user.guardians.length > 0 && (
+            <div className="mb-10 p-6 bg-emerald-50 border border-emerald-200 rounded-3xl">
+              <h4 className="font-black text-navy text-sm uppercase tracking-widest mb-4 flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-emerald-600" /> Active Guardians ({user.guardians.length})
+              </h4>
+              <div className="space-y-3">
+                {user.guardians.map((guardian, idx) => (
+                  <div key={idx} className="bg-white p-4 rounded-2xl border-l-4 border-emerald-600">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-black text-navy">{guardian.guardianName}</p>
+                        <p className="text-[10px] text-slate-500 font-medium">{guardian.guardianEmail}</p>
+                        <p className="text-[10px] text-slate-500 font-medium">{guardian.guardianPhone}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">{guardian.inactivityThresholdDays} Days</p>
+                        <p className="text-[10px] text-slate-400">{guardian.status}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <form onSubmit={handleInitiate} className="space-y-8">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div className="space-y-6">
                 <h3 className="text-sm font-black text-navy uppercase tracking-widest flex items-center gap-2">
-                  <UserPlus className="w-4 h-4 text-gold" /> Designated Guardian
+                  <UserPlus className="w-4 h-4 text-gold" /> Add Guardian
                 </h3>
                 
                 <div className="space-y-4">
@@ -206,7 +245,7 @@ export const GuardianSettings: React.FC<GuardianSettingsProps> = ({ user }) => {
               type="submit"
               className="w-full bg-navy text-gold font-black py-6 rounded-[24px] shadow-2xl hover:bg-slate-800 transition-all active:scale-[0.98] flex items-center justify-center gap-4 text-lg"
             >
-              {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : <><Lock className="w-5 h-5" /> Seal Guardian Protocol</>}
+              {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : <><Lock className="w-5 h-5" /> {user.guardians && user.guardians.length > 0 ? 'Add Another Guardian' : 'Seal Guardian Protocol'}</>}
             </button>
           </form>
         </div>
