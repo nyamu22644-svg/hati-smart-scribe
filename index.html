@@ -2,12 +2,12 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     
     <!-- Primary Meta Tags -->
     <title>HATI | Your Life. Certified.</title>
-    <meta name="title" content="HATI | Your Life. Certified.">
-    <meta name="description" content="The secure, encrypted vault for your family's medical history. Powered by privacy-first AI. Your health history, as permanent as land.">
+    <meta name="title" content="HATI">
+    <meta name="description" content="Your Life Certified - Privacy-First Health Vault. The secure, encrypted vault for your family's medical history.">
     
     <!-- PWA & App Icons -->
     <link rel="manifest" href="/manifest.json">
@@ -18,7 +18,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="HATI">
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.svg">
-    <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
+    <link rel="icon" type="image/svg+xml" href="/icons/icon-192x192.svg">
     <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192x192.svg">
     <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512x512.svg">
     <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32x32.svg">
@@ -27,7 +27,6 @@
     <!-- Custom Styles -->
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Playfair+Display:wght@700;900&display=swap');
-      
       :root {
         --brand-navy: #0A192F;
         --brand-gold: #D4AF37;
@@ -52,5 +51,17 @@
 <body class="bg-slate-50 text-slate-900 min-h-screen">
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
+    <script>
+      // Register Service Worker for PWA installation
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').then(() => {
+            console.log('✅ Service Worker registered for HATI PWA');
+          }).catch((error) => {
+            console.log('⚠️ Service Worker registration failed:', error);
+          });
+        });
+      }
+    </script>
 </body>
 </html>

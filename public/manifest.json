@@ -1,7 +1,7 @@
 {
-  "name": "HATI - Your Life. Certified.",
+  "name": "HATI",
   "short_name": "HATI",
-  "description": "The secure, encrypted vault for your family's medical history. Powered by privacy-first AI.",
+  "description": "Your Life Certified - Privacy-First Health Vault",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
