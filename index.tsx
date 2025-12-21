@@ -42,6 +42,8 @@ import { Auth } from '@/app/login/components/Auth';
 import { UpgradeButton } from '@/app/login/components/UpgradeButton';
 import { ConciergeButton } from '@/app/login/components/ConciergeButton';
 import { GuardianSettings } from '@/app/login/components/GuardianSettings';
+import { InheritanceSettings } from '@/app/login/components/InheritanceSettings';
+import { WebAuthSettings } from '@/app/login/components/WebAuthSettings';
 import { GuardianUpgrade } from '@/app/login/components/GuardianUpgrade';
 import PrivacyPolicy from '@/app/privacy/page';
 import { auth, db, onAuthStateChanged, signOut } from '@/lib/firebase';
@@ -155,7 +157,7 @@ const LandingPage: React.FC<{ onAuthClick: () => void }> = ({ onAuthClick }) => 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<any | null>(null);
   const [userMetadata, setUserMetadata] = useState<UserRecord | null>(null);
-  const [view, setView] = useState<'landing' | 'dashboard' | 'upload' | 'auth' | 'premium' | 'privacy' | 'guardian'>('landing');
+  const [view, setView] = useState<'landing' | 'dashboard' | 'upload' | 'auth' | 'premium' | 'privacy' | 'guardian' | 'inheritance' | 'settings'>('landing');
   const [records, setRecords] = useState<MedicalRecord[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>(DEFAULT_PROFILES);
   const [activeProfileId, setActiveProfileId] = useState(DEFAULT_PROFILES[0].id);
@@ -483,6 +485,22 @@ const App: React.FC = () => {
                <span className="text-[10px] font-black uppercase tracking-widest hidden md:inline">Guardian Protocol</span>
             </button>
 
+            <button 
+              onClick={() => setView('inheritance')}
+              className="text-white/50 hover:text-white transition-colors flex items-center gap-2 group"
+            >
+               <Heart className="w-4 h-4 text-gold group-hover:scale-110 transition-transform" />
+               <span className="text-[10px] font-black uppercase tracking-widest hidden md:inline">Inheritance</span>
+            </button>
+
+            <button 
+              onClick={() => setView('settings')}
+              className="text-white/50 hover:text-white transition-colors flex items-center gap-2 group"
+            >
+               <Settings className="w-4 h-4 text-gold group-hover:scale-110 transition-transform" />
+               <span className="text-[10px] font-black uppercase tracking-widest hidden md:inline">Security</span>
+            </button>
+
             {isImpersonating && (
               <div className="bg-rose-500 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 animate-pulse shadow-lg">
                 <ShieldAlert className="w-4 h-4" /> Impersonation Active
@@ -523,6 +541,20 @@ const App: React.FC = () => {
                </FeatureLock>
                <button onClick={() => setView('dashboard')} className="text-slate-400 font-bold uppercase tracking-widest text-[10px] hover:text-navy transition-all">← Back to Records</button>
             </div>
+          ) : view === 'inheritance' && userMetadata ? (
+            <div className="space-y-12">
+               <FeatureLock feature="inheritance_planning">
+                 <InheritanceSettings user={userMetadata} />
+               </FeatureLock>
+               <button onClick={() => setView('dashboard')} className="text-slate-400 font-bold uppercase tracking-widest text-[10px] hover:text-navy transition-all">← Back to Records</button>
+            </div>
+          ) : view === 'settings' && userMetadata ? (
+            <div className="space-y-12">
+               <FeatureLock feature="can_use_biometrics">
+                 <WebAuthSettings user={userMetadata} />
+               </FeatureLock>
+               <button onClick={() => setView('dashboard')} className="text-slate-400 font-bold uppercase tracking-widest text-[10px] hover:text-navy transition-all">← Back to Records</button>
+            </div>
           ) : (
             <div className="space-y-12">
               {!isPremium && !isImpersonating && (
@@ -550,7 +582,22 @@ const App: React.FC = () => {
                       </button>
                     ))}
                     {isPremium && (
-                      <button className="w-11 h-11 bg-slate-100 border-2 border-dashed border-slate-300 rounded-xl flex items-center justify-center text-slate-400 hover:border-gold hover:text-gold transition-all">
+                      <button 
+                        onClick={() => {
+                          const newName = prompt("Enter profile name:");
+                          if (newName) {
+                            const newProfile: Profile = {
+                              id: `p-${Date.now()}`,
+                              name: newName,
+                              relation: 'Other'
+                            };
+                            setProfiles([...profiles, newProfile]);
+                            setActiveProfileId(newProfile.id);
+                          }
+                        }}
+                        className="w-11 h-11 bg-gold border-2 border-gold rounded-xl flex items-center justify-center text-navy hover:bg-yellow-400 transition-all font-bold shadow-lg"
+                        title="Add new family profile"
+                      >
                         <Plus className="w-5 h-5" />
                       </button>
                     )}

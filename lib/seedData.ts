@@ -16,7 +16,8 @@ export const seedProductTiers = async () => {
         max_vaults: 1,
         family_profiles: false,
         guardian_protocol: false,
-        secure_camera_mode: false
+        secure_camera_mode: false,
+        inheritance_planning: false
       }
     },
     {
@@ -28,7 +29,8 @@ export const seedProductTiers = async () => {
         max_vaults: 10,
         family_profiles: true,
         guardian_protocol: true,
-        secure_camera_mode: true
+        secure_camera_mode: true,
+        inheritance_planning: true
       }
     }
   ];

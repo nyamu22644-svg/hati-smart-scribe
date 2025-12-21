@@ -2,7 +2,7 @@
 export type DocumentType = 'Prescription' | 'Lab Report' | 'Imaging' | 'Summary' | 'Other';
 export type UserRole = 'user' | 'super_admin' | 'admin';
 
-export type FeatureKey = 'can_use_biometrics' | 'storage_limit' | 'max_vaults' | 'family_profiles' | 'guardian_protocol' | 'secure_camera_mode';
+export type FeatureKey = 'can_use_biometrics' | 'storage_limit' | 'max_vaults' | 'family_profiles' | 'guardian_protocol' | 'secure_camera_mode' | 'inheritance_planning';
 
 export interface Vitals {
   systolic?: number;

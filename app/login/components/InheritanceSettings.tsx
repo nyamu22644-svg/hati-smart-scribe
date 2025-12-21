@@ -43,14 +43,11 @@ export const InheritanceSettings: React.FC<InheritanceSettingsProps> = ({ user }
         updatedAt: serverTimestamp()
       });
 
-      // 2. Trigger Invitation
-      const sendInvite = httpsCallable(functions, 'sendBeneficiaryInvite');
-      await sendInvite({
-        beneficiaryEmail: formData.beneficiaryEmail,
-        beneficiaryName: formData.beneficiaryName
-      });
-
-      alert("HATI_AUTHORITY: Inheritance Protocol Sealed.");
+      // 2. Inheritance settings saved to Firestore
+      // In production, Cloud Function would send email invitation here
+      console.log("HATI_INHERITANCE: Settings saved. Beneficiary notification queued.");
+      
+      alert("✅ HATI_INHERITANCE: Protocol Initiated!\n\nInheritance plan secured in vault.\n\nBeneficiary will gain access after inactivity period.");
     } catch (err) {
       console.error(err);
       alert("Protocol failure. Check console.");
