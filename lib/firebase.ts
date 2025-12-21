@@ -8,7 +8,7 @@ import { getFunctions } from "firebase/functions";
  * HATI Official Registry - Firebase Integration
  */
 const firebaseConfig = {
-  apiKey: process.env.API_KEY,
+  apiKey: import.meta.env.VITE_API_KEY || process.env.API_KEY,
   authDomain: "hati-certified.firebaseapp.com",
   projectId: "hati-certified",
   storageBucket: "hati-certified.firebasestorage.app",

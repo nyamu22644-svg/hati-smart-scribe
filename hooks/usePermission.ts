@@ -12,6 +12,7 @@ export const usePermission = (featureName: FeatureKey) => {
   const [allowed, setAllowed] = useState<boolean>(false);
   const [limit, setLimit] = useState<number>(0);
   const [loading, setLoading] = useState(true);
+  const [currentPlan, setCurrentPlan] = useState<string>('essential');
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -24,27 +25,30 @@ export const usePermission = (featureName: FeatureKey) => {
     const unsubUser = onSnapshot(doc(db, 'users', user.uid), (userDoc) => {
       const userData = userDoc.data() as UserRecord;
       const planId = userData?.plan || 'essential';
-
-      // 2. Listen to the Tier Configuration for that plan
-      const unsubTier = onSnapshot(doc(db, 'product_tiers', planId), (tierDoc) => {
-        const tierData = tierDoc.data() as any;
-        if (tierData && tierData.features) {
-          const featureValue = tierData.features[featureName];
-          if (typeof featureValue === 'boolean') {
-            setAllowed(featureValue);
-          } else if (typeof featureValue === 'number') {
-            setLimit(featureValue);
-            setAllowed(featureValue > 0);
-          }
-        }
-        setLoading(false);
-      });
-
-      return () => unsubTier();
+      setCurrentPlan(planId);
     });
 
     return () => unsubUser();
-  }, [featureName]);
+  }, []);
+
+  // 2. Separate effect to listen to tier configuration when plan changes
+  useEffect(() => {
+    const unsubTier = onSnapshot(doc(db, 'product_tiers', currentPlan), (tierDoc) => {
+      const tierData = tierDoc.data() as any;
+      if (tierData && tierData.features) {
+        const featureValue = tierData.features[featureName];
+        if (typeof featureValue === 'boolean') {
+          setAllowed(featureValue);
+        } else if (typeof featureValue === 'number') {
+          setLimit(featureValue);
+          setAllowed(featureValue > 0);
+        }
+      }
+      setLoading(false);
+    });
+
+    return () => unsubTier();
+  }, [currentPlan, featureName]);
 
   return { allowed, limit, loading };
 };

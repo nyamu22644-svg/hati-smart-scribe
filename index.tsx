@@ -35,6 +35,7 @@ import {
 } from 'lucide-react';
 import { MedicalRecord, DecryptedMedicalRecord, Profile, UserRecord, PlanConfig } from '@/types';
 import { decrypt } from '@/lib/security';
+import { seedProductTiers } from '@/lib/seedData';
 import MedicalUploader from '@/app/login/components/MedicalUploader';
 import VitalsChart from '@/app/login/components/VitalsChart';
 import { Auth } from '@/app/login/components/Auth';
@@ -178,6 +179,9 @@ const App: React.FC = () => {
 
   useEffect(() => {
     console.log("HATI: Auth listener initializing...");
+    // Seed product tiers on app load (idempotent operation)
+    seedProductTiers().catch(err => console.warn('Seed tiers warning:', err));
+    
     // Robust Auth Listener
     const unsubAuth = onAuthStateChanged(auth, async (user) => {
       console.log("HATI: Auth state changed", user ? "User logged in" : "No user");

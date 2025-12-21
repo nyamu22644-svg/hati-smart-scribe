@@ -2,8 +2,8 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { MedicalRecordData } from "@/types";
 
-// Correct: Initialize ai client at the top level using process.env.API_KEY
-const ai = new GoogleGenerativeAI({ apiKey: process.env.GEMINI_API_KEY || process.env.API_KEY || "" });
+// Correct: Initialize ai client at the top level using import.meta.env for Vite
+const ai = new GoogleGenerativeAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || "" });
 
 /**
  * Principal AI Scribe Service
