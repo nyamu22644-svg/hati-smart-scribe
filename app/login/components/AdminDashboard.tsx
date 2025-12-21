@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db, signOut, auth } from '@/lib/firebase';
-import { collection, onSnapshot, doc, updateDoc, query, orderBy, getDocs } from 'firebase/firestore';
+import { updatePassword, sendPasswordResetEmail } from 'firebase/auth';
+import { collection, onSnapshot, doc, updateDoc, query, orderBy, getDocs, addDoc, setDoc, getDoc } from 'firebase/firestore';
 import { 
   Users, 
   Crown, 
@@ -105,40 +106,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
     }
   });
   const [editingTier, setEditingTier] = useState<string | null>(null);
-  const [transactions, setTransactions] = useState<any[]>([
-    {
-      id: 'txn_001',
-      userId: 'user123',
-      userEmail: 'user@example.com',
-      amount: 299,
-      plan: 'guardian',
-      status: 'completed',
-      paymentMethod: 'M-Pesa',
-      createdAt: Date.now() - 86400000,
-      expiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
-    },
-    {
-      id: 'txn_002',
-      userId: 'user456',
-      userEmail: 'guardian@example.com',
-      amount: 2999,
-      plan: 'guardian',
-      status: 'completed',
-      paymentMethod: 'Stripe',
-      createdAt: Date.now() - 7 * 24 * 60 * 60 * 1000,
-      expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
-    },
-    {
-      id: 'txn_003',
-      userId: 'user789',
-      userEmail: 'pending@example.com',
-      amount: 299,
-      plan: 'guardian',
-      status: 'pending',
-      paymentMethod: 'M-Pesa',
-      createdAt: Date.now() - 3600000
-    }
-  ]);
+  const [transactions, setTransactions] = useState<any[]>([]);
   const [businessConfig, setBusinessConfig] = useState({
     // Pricing
     essentialPrice: 0,
@@ -177,58 +145,40 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
     refundWindowDays: 14,
     supportTicketResponse: '24 hours'
   });
-  const [auditLogs, setAuditLogs] = useState([
-    { id: 1, admin: 'maitgait089@gmail.com', action: 'Elevated user to premium', target: 'user123', timestamp: Date.now() - 3600000 },
-    { id: 2, admin: 'maitgait089@gmail.com', action: 'Updated pricing: Guardian 299→349', target: 'config', timestamp: Date.now() - 86400000 },
-    { id: 3, admin: 'maitgait089@gmail.com', action: 'Banned user account', target: 'user456', timestamp: Date.now() - 172800000 },
-    { id: 4, admin: 'maitgait089@gmail.com', action: 'Created promo code: SAVE20', target: 'promo', timestamp: Date.now() - 259200000 }
-  ]);
-  const [promoCodes, setPromoCodes] = useState([
-    { id: 'SAVE20', code: 'SAVE20', discountPercent: 20, discountAmount: 0, maxUses: 100, usedCount: 35, expiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), active: true, applicablePlans: ['guardian'] },
-    { id: 'WELCOME14', code: 'WELCOME14', discountPercent: 100, discountAmount: 0, maxUses: 1000, usedCount: 543, expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), active: true, applicablePlans: ['guardian'] },
-    { id: 'REFER50', code: 'REFER50', discountPercent: 0, discountAmount: 50, maxUses: 500, usedCount: 187, expiryDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), active: false, applicablePlans: ['guardian'] }
-  ]);
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [promoCodes, setPromoCodes] = useState<any[]>([]);
   const [newPromoCode, setNewPromoCode] = useState({ code: '', discountPercent: 0, discountAmount: 0, maxUses: 100, expiryDays: 30 });
-  const [bulkMessage, setBulkMessage] = useState({ title: '', message: '', targetSegment: 'all', channel: 'email' });
+  const [bulkMessage, setBulkMessage] = useState({ 
+    title: 'Guardian Protocol Now Available', 
+    message: 'Protect your medical legacy with our new Guardian Protocol. Nominate trusted guardians and ensure your medical records are accessible to those you trust.',
+    targetSegment: 'all', 
+    channel: 'email' 
+  });
+  const [showSecurityLog, setShowSecurityLog] = useState(false);
+  const [securityLogFilter, setSecurityLogFilter] = useState('');
+  const [showPasswordReset, setShowPasswordReset] = useState(false);
+  const [passwordResetData, setPasswordResetData] = useState({ adminEmail: '', status: '', message: '' });
   const [marketingConfig, setMarketingConfig] = useState({
-    // Paywall Messaging
-    paywallTitle: 'Guardian Feature Locked',
-    paywallSubtitle: 'Upgrade to Guardian to unlock this premium capability',
-    ctaText: 'Unlock Now',
-    // FOMO Messages
+    paywallTitle: 'Upgrade to Guardian Plan',
+    paywallSubtitle: 'Unlock advanced health management features',
+    ctaText: 'Upgrade Now',
     fomoMessages: [
-      { id: 1, trigger: 'login_count_3', message: 'You\'ve logged in 3 times - most users upgrade after their 5th login!', enabled: true },
-      { id: 2, trigger: 'document_count_5', message: 'You have 5 documents - Guardian users store up to 100+ with unlimited AI analysis!', enabled: true },
-      { id: 3, trigger: 'time_on_platform_7days', message: 'You\'ve been with us a week - it\'s time to unlock the full HATI experience!', enabled: true },
-      { id: 4, trigger: 'feature_attempt_family', message: 'Family profiles are essential for protecting your loved ones\' medical history', enabled: true }
+      { id: 1, trigger: 'upload_record', message: 'Guardian plan members get AI-powered health insights!', enabled: true },
+      { id: 2, trigger: 'view_vault', message: 'Switch to Guardian for biometric lock & family profiles', enabled: true },
+      { id: 3, trigger: 'share_record', message: 'Premium feature: Share medical records securely with guardians', enabled: true }
     ],
-    // Feature Comparison
     featureComparison: [
-      { feature: 'Vault Storage', essential: '5 MB', guardian: 'Unlimited' },
-      { feature: 'AI Scribe', essential: '10/month', guardian: 'Unlimited' },
-      { feature: 'Family Profiles', essential: '1 (You)', guardian: 'Unlimited' },
-      { feature: 'Biometric Lock', essential: '❌', guardian: '✅' },
-      { feature: 'Guardian Protocol', essential: '❌', guardian: '✅' },
-      { feature: 'PDF Reports', essential: '❌', guardian: '✅' },
-      { feature: '24/7 WhatsApp', essential: 'Email only', guardian: '✅' }
+      { feature: 'AI Medical Extraction', essential: '✓', guardian: '✓ Advanced' },
+      { feature: 'Biometric Lock', essential: '✗', guardian: '✓' },
+      { feature: 'Family Profiles', essential: '1', guardian: 'Unlimited' },
+      { feature: 'Guardian Protocol', essential: '✗', guardian: '✓' },
+      { feature: 'Health Insights', essential: '✗', guardian: '✓' },
+      { feature: 'Priority Support', essential: 'Email', guardian: '24/7 WhatsApp' }
     ],
-    // Upgrade Triggers
-    upgradeTriggers: [
-      { id: 'on_feature_lock', label: 'When user hits feature limit', enabled: true },
-      { id: 'on_document_milestone', label: 'After 5 documents uploaded', enabled: true },
-      { id: 'on_7day_active', label: '7 days of platform activity', enabled: true },
-      { id: 'on_failed_action', label: 'When trying locked feature', enabled: true }
-    ],
-    // Onboarding
-    onboardingMessages: {
-      welcome: 'Welcome to HATI - Your personal medical vault. Secure, encrypted, forever.',
-      day1: 'Tip: Upload your first medical record to get started',
-      day3: 'Did you know? Most users upgrade within 3 days!',
-      day7: 'Ready to protect your family\'s health?'
-    },
-    // Conversion Targeting
+    upgradeTriggers: [],
+    onboardingMessages: {},
     targetSegment: 'free_users_active_7days',
-    messagingType: 'fomo' // or 'value_prop', 'urgency', 'social_proof'
+    messagingType: 'fomo'
   });
 
   useEffect(() => {
@@ -238,6 +188,86 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
       setLoading(false);
     });
     return unsub;
+  }, []);
+
+  // Load business configuration from Firebase
+  useEffect(() => {
+    const loadBusinessConfig = async () => {
+      try {
+        const configDoc = await getDoc(doc(db, 'config', 'business_settings'));
+        if (configDoc.exists()) {
+          const config = configDoc.data();
+          setBusinessConfig(prev => ({
+            ...prev,
+            guardianMonthlyPrice: config.guardianMonthlyPrice || 299,
+            guardianYearlyPrice: config.guardianYearlyPrice || 2999,
+            yearlyDiscountPercent: config.yearlyDiscountPercent || 20,
+            currency: config.currency || 'KES',
+            currencySymbol: config.currencySymbol || 'Ksh'
+          }));
+        }
+      } catch (error) {
+        console.error('Error loading business config:', error);
+      }
+    };
+    loadBusinessConfig();
+  }, []);
+
+  // Load promo codes from Firebase
+  useEffect(() => {
+    const loadPromoCodes = async () => {
+      try {
+        const configDoc = await getDoc(doc(db, 'config', 'promo_codes'));
+        if (configDoc.exists()) {
+          const codesData = configDoc.data();
+          const codesArray = Object.entries(codesData || {}).map(([key, value]: any) => ({
+            id: key,
+            code: key,
+            ...value
+          }));
+          setPromoCodes(codesArray);
+        }
+      } catch (error) {
+        console.error('Error loading promo codes:', error);
+      }
+    };
+    loadPromoCodes();
+  }, []);
+
+  // Load marketing configuration from Firebase
+  useEffect(() => {
+    const loadMarketingConfig = async () => {
+      try {
+        const configDoc = await getDoc(doc(db, 'config', 'marketing_settings'));
+        if (configDoc.exists()) {
+          const config = configDoc.data();
+          setMarketingConfig(prev => ({
+            ...prev,
+            paywallTitle: config.paywallTitle || prev.paywallTitle,
+            paywallSubtitle: config.paywallSubtitle || prev.paywallSubtitle,
+            ctaText: config.ctaText || prev.ctaText
+          }));
+        }
+      } catch (error) {
+        console.error('Error loading marketing config:', error);
+      }
+    };
+    loadMarketingConfig();
+  }, []);
+
+  // Load audit logs from Firebase
+  useEffect(() => {
+    const loadAuditLogs = async () => {
+      try {
+        const logsRef = collection(db, 'audit_logs');
+        const q = query(logsRef, orderBy('timestamp', 'desc'));
+        const snapshot = await getDocs(q);
+        setAuditLogs(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      } catch (error) {
+        console.error('Error loading audit logs:', error);
+      }
+    };
+    loadAuditLogs();
   }, []);
 
   const stats = useMemo(() => {
@@ -287,17 +317,209 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
 
   const handleEditStart = (user: UserRecord) => {
     setEditingUser(user.uid);
-    setEditData(user);
+    // Ensure banned field is properly initialized
+    setEditData({
+      ...user,
+      banned: user.banned === true ? true : false
+    });
   };
 
   const handleEditSave = async () => {
     if (!editingUser) return;
-    await updateDoc(doc(db, "users", editingUser), {
-      ...editData,
-      updatedAt: Date.now()
-    });
-    setEditingUser(null);
-    setActiveMenu(null);
+    try {
+      // If banning a user, immediately sign them out from all sessions
+      if (editData.banned && !editingUser?.banned) {
+        console.log(`🔒 HATI_SECURITY: Banning user ${editingUser}`);
+      }
+
+      await updateDoc(doc(db, "users", editingUser), {
+        ...editData,
+        banned: editData.banned || false,
+        bannedAt: editData.banned ? Date.now() : null,
+        bannedReason: editData.banned ? 'Admin suspension' : null,
+        updatedBy: auth.currentUser?.email || 'admin',
+        updatedAt: Date.now()
+      });
+
+      // Log to audit trail
+      await addDoc(collection(db, 'audit_logs'), {
+        action: editData.banned ? 'USER_BANNED' : 'USER_UNBANNED',
+        targetUser: editingUser,
+        admin: auth.currentUser?.email || 'admin',
+        timestamp: Date.now(),
+        details: editData.banned ? 'Account suspended' : 'Account restored'
+      });
+
+      alert(editData.banned ? '🔒 User BANNED - They will be signed out immediately' : '✅ User unbanned and restored');
+      setEditingUser(null);
+      setActiveMenu(null);
+    } catch (error: any) {
+      alert(`❌ Error: ${error.message}`);
+    }
+  };
+
+  // Save Settings to Firebase
+  const handleSaveSettings = async () => {
+    try {
+      await setDoc(doc(db, "config", "admin_settings"), {
+        whatsappNumber: settings.whatsappNumber,
+        supportEmail: settings.supportEmail,
+        autoLockTimeoutMs: settings.autoLockTimeoutMs,
+        currency: settings.currency,
+        updatedAt: Date.now(),
+        updatedBy: auth.currentUser?.email || 'admin'
+      }, { merge: true });
+      alert('✅ Settings saved successfully!');
+      setEditingSettings(false);
+    } catch (error) {
+      alert('❌ Error saving settings: ' + (error as any).message);
+    }
+  };
+
+  // Handle Admin Password Reset
+  const handleResetAdminPassword = async () => {
+    if (!passwordResetData.adminEmail) {
+      setPasswordResetData(prev => ({ ...prev, status: 'error', message: 'Enter your admin email address' }));
+      return;
+    }
+
+    try {
+      setPasswordResetData(prev => ({ ...prev, status: 'loading', message: 'Sending reset email...' }));
+      await sendPasswordResetEmail(auth, passwordResetData.adminEmail);
+      
+      // Log the password reset request
+      await addDoc(collection(db, "audit_logs"), {
+        timestamp: Date.now(),
+        admin: auth.currentUser?.email || passwordResetData.adminEmail,
+        action: 'REQUESTED_ADMIN_PASSWORD_RESET',
+        target: 'admin-account',
+        details: `Password reset email sent to ${passwordResetData.adminEmail}`
+      });
+      
+      setPasswordResetData({ adminEmail: '', status: 'success', message: '✅ Password reset email sent! Check your inbox.' });
+      setTimeout(() => {
+        setShowPasswordReset(false);
+        setPasswordResetData({ adminEmail: '', status: '', message: '' });
+      }, 3000);
+    } catch (error: any) {
+      setPasswordResetData(prev => ({ ...prev, status: 'error', message: error.message || 'Failed to send reset email' }));
+    }
+  };
+
+  // Save Business Config to Firebase
+  const handleSaveBusinessConfig = async () => {
+    try {
+      await setDoc(doc(db, "config", "business_settings"), {
+        ...businessConfig,
+        updatedAt: Date.now(),
+        updatedBy: auth.currentUser?.email || 'admin'
+      }, { merge: true });
+      alert('✅ Business configuration saved!');
+    } catch (error) {
+      alert('❌ Error saving config: ' + (error as any).message);
+    }
+  };
+
+  // Create Promo Code in Firebase
+  const handleCreatePromoCode = async () => {
+    if (!newPromoCode.code) {
+      alert('❌ Please enter a promo code');
+      return;
+    }
+    try {
+      const promoData = {
+        code: newPromoCode.code,
+        discountPercent: newPromoCode.discountPercent,
+        discountAmount: newPromoCode.discountAmount,
+        maxUses: newPromoCode.maxUses,
+        usedCount: 0,
+        active: true,
+        applicablePlans: ['guardian'],
+        expiryDate: new Date(Date.now() + newPromoCode.expiryDays * 24 * 60 * 60 * 1000),
+        createdAt: Date.now(),
+        createdBy: auth.currentUser?.email || 'admin'
+      };
+      
+      await updateDoc(doc(db, "config", "promo_codes"), {
+        [newPromoCode.code]: promoData,
+        updatedAt: Date.now()
+      }).catch(() => {
+        // If doc doesn't exist, create it
+        return setDoc(doc(db, "config", "promo_codes"), {
+          [newPromoCode.code]: promoData,
+          updatedAt: Date.now()
+        });
+      });
+      
+      // Update local state
+      setPromoCodes([...promoCodes, {...promoData, id: newPromoCode.code}]);
+      setNewPromoCode({ code: '', discountPercent: 0, discountAmount: 0, maxUses: 100, expiryDays: 30 });
+      alert(`✅ Promo code '${newPromoCode.code}' created successfully!`);
+    } catch (error) {
+      alert('❌ Error creating promo code: ' + (error as any).message);
+    }
+  };
+
+  // Save Marketing Config to Firebase
+  const handleSaveMarketingConfig = async () => {
+    try {
+      await setDoc(doc(db, "config", "marketing_settings"), {
+        ...marketingConfig,
+        updatedAt: Date.now(),
+        updatedBy: auth.currentUser?.email || 'admin'
+      }, { merge: true });
+      alert('✅ Marketing configuration updated!');
+    } catch (error) {
+      alert('❌ Error saving marketing config: ' + (error as any).message);
+    }
+  };
+
+  // Send Bulk Campaign
+  const handleSendCampaign = async () => {
+    if (!bulkMessage.title || !bulkMessage.message) {
+      alert('❌ Please fill in title and message');
+      return;
+    }
+    try {
+      // Get users based on segment
+      let targetUsers = users;
+      if (bulkMessage.targetSegment === 'premium') {
+        targetUsers = users.filter(u => u.isPremium);
+      } else if (bulkMessage.targetSegment === 'free') {
+        targetUsers = users.filter(u => !u.isPremium);
+      } else if (bulkMessage.targetSegment === 'inactive') {
+        const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+        targetUsers = users.filter(u => (u.lastActive?.seconds || 0) * 1000 < thirtyDaysAgo);
+      }
+
+      // Save campaign record
+      const campaignRecord = {
+        title: bulkMessage.title,
+        message: bulkMessage.message,
+        channel: bulkMessage.channel,
+        targetSegment: bulkMessage.targetSegment,
+        totalRecipients: targetUsers.length,
+        sentAt: Date.now(),
+        sentBy: auth.currentUser?.email || 'admin',
+        recipients: targetUsers.map(u => u.uid)
+      };
+
+      await addDoc(collection(db, "campaigns"), campaignRecord);
+      
+      // Log audit entry
+      await addDoc(collection(db, "audit_logs"), {
+        admin: auth.currentUser?.email || 'admin',
+        action: `Sent campaign via ${bulkMessage.channel} to ${bulkMessage.targetSegment}`,
+        target: 'campaign',
+        timestamp: Date.now(),
+        details: campaignRecord
+      });
+
+      alert(`✅ Campaign sent to ${targetUsers.length} users via ${bulkMessage.channel}!`);
+      setBulkMessage({ title: '', message: '', targetSegment: 'all', channel: 'email' });
+    } catch (error) {
+      alert('❌ Error sending campaign: ' + (error as any).message);
+    }
   };
 
   return (
@@ -412,14 +634,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                   </thead>
                   <tbody>
                     {filteredUsers.map((u) => (
-                      <tr key={u.uid} className="hover:bg-slate-50/30 transition-colors group">
+                      <tr key={u.uid} className={`hover:bg-slate-50/30 transition-colors group ${u.banned ? 'bg-red-50' : ''}`}>
                         <td className="px-8 py-6">
                           <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 rounded-2xl bg-navy/5 flex items-center justify-center text-navy font-black text-xl">
-                              {u.name?.charAt(0) || u.email?.charAt(0)}
+                            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white font-black text-xl ${u.banned ? 'bg-red-500' : 'bg-navy'}`}>
+                              {u.banned ? <Ban className="w-5 h-5" /> : (u.name?.charAt(0) || u.email?.charAt(0))}
                             </div>
                             <div>
-                              <p className="font-bold text-navy">{u.name || 'Unknown'}</p>
+                              <div className="flex items-center gap-2">
+                                <p className="font-bold text-navy">{u.name || 'Unknown'}</p>
+                                {u.banned && <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded text-[10px] font-black">BANNED</span>}
+                              </div>
                               <p className="text-xs text-slate-400 font-medium">{u.email}</p>
                             </div>
                           </div>
@@ -492,6 +717,119 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                    <Search className="w-8 h-8 text-slate-200" />
                  </div>
                  <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">No matching identities found</p>
+              </div>
+            )}
+
+            {/* Edit User Modal */}
+            {editingUser && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[5000] p-4">
+                <div className="bg-white rounded-[32px] max-w-md w-full p-8 shadow-2xl">
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-2xl font-serif font-black text-navy">Edit User</h3>
+                    <button 
+                      onClick={() => setEditingUser(null)}
+                      className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                    >
+                      <XIcon className="w-5 h-5 text-slate-400" />
+                    </button>
+                  </div>
+
+                  <div className="space-y-4 mb-6">
+                    <div>
+                      <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1 mb-2 block">User Name</label>
+                      <input 
+                        type="text" 
+                        value={editData.name || ''}
+                        onChange={(e) => setEditData({...editData, name: e.target.value})}
+                        className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-gold/20 outline-none font-bold"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1 mb-2 block">Email</label>
+                      <input 
+                        type="email" 
+                        value={editData.email || ''}
+                        disabled
+                        className="w-full px-4 py-3 border border-slate-200 rounded-xl bg-slate-50 font-bold text-slate-600"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1 mb-2 block">Plan</label>
+                      <select 
+                        value={editData.plan || 'essential'}
+                        onChange={(e) => setEditData({...editData, plan: e.target.value})}
+                        className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-gold/20 outline-none font-bold"
+                      >
+                        <option value="essential">Essential</option>
+                        <option value="guardian">Guardian</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1 mb-2 block">Premium Status</label>
+                      <div className="flex gap-3">
+                        <button 
+                          onClick={() => setEditData({...editData, isPremium: true})}
+                          className={`flex-1 py-2 rounded-xl font-bold transition-all ${
+                            editData.isPremium 
+                              ? 'bg-gold text-white' 
+                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }`}
+                        >
+                          Premium
+                        </button>
+                        <button 
+                          onClick={() => setEditData({...editData, isPremium: false})}
+                          className={`flex-1 py-2 rounded-xl font-bold transition-all ${
+                            !editData.isPremium 
+                              ? 'bg-slate-300 text-white' 
+                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }`}
+                        >
+                          Free
+                        </button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1 mb-2 block">Account Status</label>
+                      <button 
+                        onClick={() => setEditData({...editData, banned: !editData.banned})}
+                        className={`w-full py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${
+                          editData.banned === true
+                            ? 'bg-emerald-50 text-emerald-600 border-2 border-emerald-400'
+                            : 'bg-red-50 text-crimson border-2 border-red-400'
+                        }`}
+                      >
+                        {editData.banned === true ? (
+                          <><Ban className="w-4 h-4" /> 🔓 UNBAN USER</>
+                        ) : (
+                          <><CheckCircle className="w-4 h-4" /> ✓ ACCOUNT ACTIVE</>
+                        )}
+                      </button>
+                      <p className="text-[10px] text-slate-500 font-medium mt-2 text-center">
+                        {editData.banned === true ? 'Click to restore account' : 'Click to suspend account'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button 
+                      onClick={() => setEditingUser(null)}
+                      className="flex-1 px-4 py-3 border border-slate-200 rounded-xl font-bold text-slate-600 hover:bg-slate-50 transition-all"
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      onClick={handleEditSave}
+                      className="flex-1 px-4 py-3 bg-navy text-white rounded-xl font-bold hover:bg-slate-800 transition-all"
+                    >
+                      Save Changes
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -1145,9 +1483,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
             {/* Save All Config */}
             <div className="flex gap-4">
               <button
-                onClick={() => {
-                  alert(`Business Config Updated:\n\n${JSON.stringify(businessConfig, null, 2)}`);
-                }}
+                onClick={handleSaveBusinessConfig}
                 className="flex-1 bg-navy text-white font-bold py-4 rounded-[24px] hover:bg-slate-800 transition-all flex items-center justify-center gap-2"
               >
                 <Save className="w-5 h-5" />
@@ -1230,11 +1566,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                 </div>
 
                 <button
-                  onClick={() => {
-                    setPromoCodes([...promoCodes, {...newPromoCode, id: newPromoCode.code, usedCount: 0, active: true, applicablePlans: ['guardian'], expiryDate: new Date(Date.now() + newPromoCode.expiryDays * 24 * 60 * 60 * 1000)}]);
-                    setNewPromoCode({ code: '', discountPercent: 0, discountAmount: 0, maxUses: 100, expiryDays: 30 });
-                    alert('Promo code created: ' + newPromoCode.code);
-                  }}
+                  onClick={handleCreatePromoCode}
                   className="bg-navy text-white font-bold py-3 rounded-xl hover:bg-slate-800 transition-all flex items-center justify-center gap-2"
                 >
                   <Plus className="w-5 h-5" />
@@ -1371,10 +1703,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                 </div>
 
                 <button
-                  onClick={() => {
-                    alert(`Campaign sent via ${bulkMessage.channel} to ${bulkMessage.targetSegment} users:\n\n${bulkMessage.title}\n${bulkMessage.message}`);
-                    setBulkMessage({ title: '', message: '', targetSegment: 'all', channel: 'email' });
-                  }}
+                  onClick={handleSendCampaign}
                   className="w-full bg-navy text-white font-bold py-4 rounded-[24px] hover:bg-slate-800 transition-all flex items-center justify-center gap-2"
                 >
                   <Send className="w-5 h-5" />
@@ -1436,7 +1765,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                       <td className="text-sm font-bold text-slate-700 py-4 px-4">{log.action}</td>
                       <td className="text-xs font-mono text-slate-500 py-4 px-4">{log.target}</td>
                       <td className="text-xs text-slate-500 py-4 px-4">
-                        <button className="text-navy hover:text-gold font-bold transition-colors">View</button>
+                        <button 
+                          onClick={() => alert(`Action Details:\n\n${JSON.stringify(log, null, 2)}`)}
+                          className="text-navy hover:text-gold font-bold transition-colors"
+                        >
+                          View
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -1718,7 +2052,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
 
             {/* Save Marketing Config */}
             <button
-              onClick={() => alert(`Marketing Config Updated:\n\n${JSON.stringify(marketingConfig, null, 2)}`)}
+              onClick={handleSaveMarketingConfig}
               className="w-full bg-navy text-white font-bold py-4 rounded-[24px] hover:bg-slate-800 transition-all flex items-center justify-center gap-2"
             >
               <Save className="w-5 h-5" />
@@ -1781,10 +2115,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
 
               {editingSettings && (
                 <button
-                  onClick={() => {
-                    alert('Settings updated: ' + JSON.stringify(settings));
-                    setEditingSettings(false);
-                  }}
+                  onClick={handleSaveSettings}
                   className="w-full bg-navy text-white font-bold py-3 rounded-xl hover:bg-slate-800 transition-all"
                 >
                   Save Settings
@@ -1814,11 +2145,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
               </div>
 
               <div className="pt-4 border-t border-slate-200 space-y-3">
-                <button className="w-full bg-emerald-50 hover:bg-emerald-100 text-emerald-600 font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2">
+                <button 
+                  onClick={() => setShowSecurityLog(true)}
+                  className="w-full bg-emerald-50 hover:bg-emerald-100 text-emerald-600 font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2"
+                >
                   <ShieldCheck className="w-4 h-4" />
                   View Security Log
                 </button>
-                <button className="w-full bg-rose-50 hover:bg-rose-100 text-crimson font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2">
+                <button 
+                  onClick={() => setShowPasswordReset(true)}
+                  className="w-full bg-rose-50 hover:bg-rose-100 text-crimson font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2"
+                >
                   <Lock className="w-4 h-4" />
                   Reset Admin Password
                 </button>
@@ -1827,6 +2164,165 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
           </div>
         )}
       </main>
+
+      {/* SECURITY LOG MODAL */}
+      {showSecurityLog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[5000] p-4">
+          <div className="bg-white rounded-[32px] max-w-2xl w-full p-8 shadow-2xl max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6 sticky top-0 bg-white pb-4">
+              <h3 className="text-2xl font-serif font-black text-navy">Security Audit Log</h3>
+              <button 
+                onClick={() => { setShowSecurityLog(false); setSecurityLogFilter(''); }}
+                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <XIcon className="w-5 h-5 text-slate-400" />
+              </button>
+            </div>
+
+            <div className="mb-4">
+              <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1 mb-2 block">Search Logs</label>
+              <input 
+                type="text" 
+                placeholder="Search by action, admin, or target..."
+                value={securityLogFilter}
+                onChange={(e) => setSecurityLogFilter(e.target.value)}
+                className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-gold/20 outline-none font-bold"
+              />
+            </div>
+
+            <div className="space-y-3">
+              {auditLogs.filter(log => {
+                const searchLower = securityLogFilter.toLowerCase();
+                return !securityLogFilter || 
+                  log.action.toLowerCase().includes(searchLower) || 
+                  log.admin.toLowerCase().includes(searchLower) || 
+                  (log.target && log.target.toLowerCase().includes(searchLower)) || 
+                  (log.details && log.details.toLowerCase().includes(searchLower));
+              }).length > 0 ? (
+                auditLogs.filter(log => {
+                  const searchLower = securityLogFilter.toLowerCase();
+                  return !securityLogFilter || 
+                    log.action.toLowerCase().includes(searchLower) || 
+                    log.admin.toLowerCase().includes(searchLower) || 
+                    (log.target && log.target.toLowerCase().includes(searchLower)) || 
+                    (log.details && log.details.toLowerCase().includes(searchLower));
+                }).map((log) => (
+                  <div key={log.id} className="p-4 border border-slate-200 rounded-xl hover:bg-slate-50 transition-all">
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex-1">
+                        <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Action</p>
+                        <p className="text-sm font-bold text-navy">{log.action}</p>
+                      </div>
+                      <p className="text-xs text-slate-500 ml-4 whitespace-nowrap">
+                        {new Date(log.timestamp).toLocaleString('en-KE')}
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 mb-2">
+                      <div>
+                        <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Admin</p>
+                        <p className="text-xs font-bold text-slate-700">{log.admin}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Target</p>
+                        <p className="text-xs font-bold text-slate-700">{log.target || 'N/A'}</p>
+                      </div>
+                    </div>
+                    {log.details && (
+                      <div>
+                        <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Details</p>
+                        <p className="text-xs text-slate-600 bg-slate-50 p-2 rounded font-mono">{log.details}</p>
+                      </div>
+                    )}
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-slate-500 font-bold">No audit logs found</p>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-6 pt-4 border-t border-slate-200">
+              <p className="text-xs text-slate-500 font-bold">Total Records: {auditLogs.filter(log => {
+                const searchLower = securityLogFilter.toLowerCase();
+                return !securityLogFilter || 
+                  log.action.toLowerCase().includes(searchLower) || 
+                  log.admin.toLowerCase().includes(searchLower) || 
+                  (log.target && log.target.toLowerCase().includes(searchLower)) || 
+                  (log.details && log.details.toLowerCase().includes(searchLower));
+              }).length}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* RESET ADMIN PASSWORD MODAL */}
+      {showPasswordReset && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[5000] p-4">
+          <div className="bg-white rounded-[32px] max-w-md w-full p-8 shadow-2xl">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-2xl font-serif font-black text-navy">Reset Admin Password</h3>
+              <button 
+                onClick={() => {
+                  setShowPasswordReset(false);
+                  setPasswordResetData({ adminEmail: '', status: '', message: '' });
+                }}
+                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <XIcon className="w-5 h-5 text-slate-400" />
+              </button>
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
+              <p className="text-xs font-bold text-blue-900">📧 Password Recovery</p>
+              <p className="text-xs text-blue-700 mt-1">We'll send a password reset link to your email. Click the link to create a new password.</p>
+            </div>
+
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1 mb-2 block">Admin Email</label>
+                <input 
+                  type="email" 
+                  value={passwordResetData.adminEmail}
+                  onChange={(e) => setPasswordResetData({...passwordResetData, adminEmail: e.target.value, status: '', message: ''})}
+                  placeholder="your@email.com"
+                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-gold/20 outline-none font-bold"
+                />
+              </div>
+
+              {passwordResetData.message && (
+                <div className={`p-3 rounded-xl text-sm font-bold ${
+                  passwordResetData.status === 'error' ? 'bg-red-50 text-red-700 border border-red-200' :
+                  passwordResetData.status === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                  'bg-blue-50 text-blue-700 border border-blue-200'
+                }`}>
+                  {passwordResetData.message}
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-3">
+              <button 
+                onClick={() => {
+                  setShowPasswordReset(false);
+                  setPasswordResetData({ adminEmail: '', status: '', message: '' });
+                }}
+                className="flex-1 px-4 py-3 border border-slate-200 rounded-xl font-bold text-slate-600 hover:bg-slate-50 transition-all disabled:opacity-50"
+                disabled={passwordResetData.status === 'loading'}
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleResetAdminPassword}
+                disabled={passwordResetData.status === 'loading'}
+                className="flex-1 px-4 py-3 bg-crimson text-white rounded-xl font-bold hover:bg-red-700 transition-all disabled:opacity-50"
+              >
+                {passwordResetData.status === 'loading' ? 'Sending...' : 'Send Reset Email'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <footer className="mt-20 border-t border-slate-200 py-10 text-center opacity-30">
         <p className="text-[10px] font-black uppercase tracking-[0.5em] text-navy">

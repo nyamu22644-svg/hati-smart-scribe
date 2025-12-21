@@ -44,13 +44,14 @@ import { ConciergeButton } from '@/app/login/components/ConciergeButton';
 import { GuardianSettings } from '@/app/login/components/GuardianSettings';
 import { InheritanceSettings } from '@/app/login/components/InheritanceSettings';
 import { WebAuthSettings } from '@/app/login/components/WebAuthSettings';
+import { AccountSettings } from '@/app/login/components/AccountSettings';
 import { GuardianUpgrade } from '@/app/login/components/GuardianUpgrade';
 import PrivacyPolicy from '@/app/privacy/page';
 import { auth, db, onAuthStateChanged, signOut } from '@/lib/firebase';
 import { BiometricGuard } from '@/app/login/components/BiometricGuard';
 import { FeatureLock } from '@/app/login/components/FeatureLock';
 import AdminDashboard from '@/app/login/components/AdminDashboard';
-import { collection, addDoc, query, where, onSnapshot, orderBy, doc, updateDoc, serverTimestamp, setDoc } from "firebase/firestore";
+import { collection, addDoc, query, where, onSnapshot, orderBy, doc, updateDoc, serverTimestamp, setDoc, getDocs, getDoc } from "firebase/firestore";
 import { jsPDF } from 'jspdf';
 
 console.log("HATI: Application module loaded");
@@ -157,7 +158,7 @@ const LandingPage: React.FC<{ onAuthClick: () => void }> = ({ onAuthClick }) => 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<any | null>(null);
   const [userMetadata, setUserMetadata] = useState<UserRecord | null>(null);
-  const [view, setView] = useState<'landing' | 'dashboard' | 'upload' | 'auth' | 'premium' | 'privacy' | 'guardian' | 'inheritance' | 'settings'>('landing');
+  const [view, setView] = useState<'landing' | 'dashboard' | 'upload' | 'auth' | 'premium' | 'privacy' | 'guardian' | 'inheritance' | 'settings' | 'account'>('landing');
   const [records, setRecords] = useState<MedicalRecord[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>(DEFAULT_PROFILES);
   const [activeProfileId, setActiveProfileId] = useState(DEFAULT_PROFILES[0].id);
@@ -166,9 +167,18 @@ const App: React.FC = () => {
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminPasswordPrompt, setAdminPasswordPrompt] = useState(false);
+  const [adminEmail, setAdminEmail] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
   const [adminPasswordError, setAdminPasswordError] = useState("");
   const [adminAccessVerified, setAdminAccessVerified] = useState(false);
+
+  // Auto-navigate to settings if feature just activated
+  useEffect(() => {
+    if (view === 'dashboard' && userMetadata?.can_use_biometrics && sessionStorage.getItem('HATI_FEATURE_JUST_ACTIVATED') === 'can_use_biometrics') {
+      setView('settings');
+      sessionStorage.removeItem('HATI_FEATURE_JUST_ACTIVATED');
+    }
+  }, [userMetadata?.can_use_biometrics, view]);
 
   // Check for secret admin path on mount
   useEffect(() => {
@@ -191,6 +201,41 @@ const App: React.FC = () => {
         if (user) {
           const impersonateUid = sessionStorage.getItem('hati_impersonate_uid');
           const targetUid = impersonateUid || user.uid;
+          
+          // CHECK 1: Ban status - Prevent access if user is banned
+          try {
+            const userDoc = await getDoc(doc(db, 'users', targetUid));
+            const userData = userDoc.data();
+            
+            if (userData?.banned === true) {
+              console.warn(`HATI_SECURITY: User ${targetUid} is banned`);
+              await signOut(auth);
+              alert('❌ Your account has been suspended. Contact support.');
+              setCurrentUser(null);
+              setView('landing');
+              setAuthLoading(false);
+              return;
+            }
+
+            // Real-time ban status listener - check if user gets banned while logged in
+            onSnapshot(doc(db, 'users', targetUid), (snapshot) => {
+              if (snapshot.exists()) {
+                const currentData = snapshot.data();
+                if (currentData?.banned === true && !userData?.banned) {
+                  // User was just banned
+                  console.warn(`HATI_SECURITY: User ${targetUid} was banned during session`);
+                  signOut(auth).then(() => {
+                    alert('⛔ Your account has been suspended by administrator.');
+                    setCurrentUser(null);
+                    setView('landing');
+                  });
+                }
+              }
+            });
+          } catch (err) {
+            console.warn('Error checking ban status:', err);
+          }
+          
           setCurrentUser(user);
           
           // Check admin status
@@ -233,10 +278,14 @@ const App: React.FC = () => {
           });
 
           // Check if should show admin dashboard
-          if (adminAccessVerified && isAdmin) {
-            setView('admin' as any);
-          } else {
-            setView('dashboard');
+          // Don't force switch to dashboard if admin access is already verified
+          if (!adminAccessVerified) {
+            if (isAdmin) {
+              // User is admin but not verified yet, stay on login
+              setView('auth');
+            } else {
+              setView('dashboard');
+            }
           }
         } else {
           setCurrentUser(null);
@@ -256,24 +305,61 @@ const App: React.FC = () => {
       unsubAuth();
       window.removeEventListener('HATI_NAVIGATE_PREMIUM', handlePremiumNav);
     };
-  }, [adminAccessVerified]);
+  }, []);
 
-  const handleAdminPasswordSubmit = () => {
+  const handleAdminPasswordSubmit = async () => {
     const correctPassword = import.meta.env.VITE_ADMIN_PASSWORD;
     const inputPassword = adminPassword.trim();
-    
-    console.log("🔐 Password check:");
-    console.log("Expected:", correctPassword);
-    console.log("Received:", inputPassword);
-    console.log("Match:", inputPassword === correctPassword);
-    
-    if (inputPassword === correctPassword) {
+    const inputEmail = adminEmail.trim();
+
+    // Validate email
+    if (!inputEmail) {
+      setAdminPasswordError("Please enter your email address");
+      return;
+    }
+
+    // Validate password
+    if (inputPassword !== correctPassword) {
+      setAdminPasswordError("Incorrect password. Access denied.");
+      setAdminPassword("");
+      return;
+    }
+
+    // Password is correct, now verify Firebase role
+    try {
+      setAdminPasswordError("Verifying admin role...");
+      
+      // Query Firestore for the user with this email
+      const usersRef = collection(db, 'users');
+      const q = query(usersRef, where('email', '==', inputEmail));
+      const querySnapshot = await getDocs(q);
+
+      if (querySnapshot.empty) {
+        setAdminPasswordError("User not found in system.");
+        setAdminPassword("");
+        return;
+      }
+
+      const userData = querySnapshot.docs[0].data();
+      
+      // Check if user has super_admin role
+      if (userData.role !== 'super_admin' && userData.role !== 'admin') {
+        setAdminPasswordError(`User ${inputEmail} does not have admin privileges.`);
+        setAdminPassword("");
+        return;
+      }
+
+      // All checks passed!
       setAdminPasswordError("");
       setAdminPasswordPrompt(false);
       setAdminPassword("");
+      setAdminEmail("");
+      setAdminAccessVerified(true);
       setView('admin' as any);
-    } else {
-      setAdminPasswordError("Incorrect password. Access denied.");
+      
+    } catch (err: any) {
+      console.error("Admin verification error:", err);
+      setAdminPasswordError("Error verifying admin role. Please try again.");
       setAdminPassword("");
     }
   };
@@ -375,7 +461,7 @@ const App: React.FC = () => {
   };
 
   // Admin password prompt modal
-  if (adminPasswordPrompt && isAdmin) {
+  if (adminPasswordPrompt) {
     return (
       <div className="min-h-screen bg-navy flex items-center justify-center p-6">
         <div className="bg-white rounded-3xl shadow-2xl p-12 max-w-md w-full space-y-8">
@@ -383,20 +469,35 @@ const App: React.FC = () => {
             <div className="bg-navy p-4 rounded-2xl w-16 h-16 flex items-center justify-center mx-auto mb-4">
               <Lock className="text-gold w-8 h-8" />
             </div>
-            <h1 className="text-3xl font-serif font-black text-navy">Admin Access</h1>
-            <p className="text-slate-400 text-sm font-bold uppercase tracking-widest mt-2">Enter password to continue</p>
+            <h1 className="text-3xl font-serif font-black text-navy">Admin Portal</h1>
+            <p className="text-slate-400 text-sm font-bold uppercase tracking-widest mt-2">Verify your credentials</p>
           </div>
 
           <div className="space-y-4">
-            <input
-              type="password"
-              placeholder="Admin Password"
-              value={adminPassword}
-              onChange={(e) => setAdminPassword(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleAdminPasswordSubmit()}
-              className="w-full px-4 py-4 bg-slate-50 border-2 border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-gold/50 font-bold transition-all"
-              autoFocus
-            />
+            <div>
+              <label className="text-xs font-black text-slate-500 uppercase tracking-widest">Email Address</label>
+              <input
+                type="email"
+                placeholder="your@email.com"
+                value={adminEmail}
+                onChange={(e) => setAdminEmail(e.target.value)}
+                className="w-full mt-2 px-4 py-4 bg-slate-50 border-2 border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-gold/50 font-bold transition-all"
+                autoFocus
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-black text-slate-500 uppercase tracking-widest">Admin Password</label>
+              <input
+                type="password"
+                placeholder="Enter password"
+                value={adminPassword}
+                onChange={(e) => setAdminPassword(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handleAdminPasswordSubmit()}
+                className="w-full mt-2 px-4 py-4 bg-slate-50 border-2 border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-gold/50 font-bold transition-all"
+              />
+            </div>
+
             {adminPasswordError && (
               <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl text-rose-600 text-xs font-bold">
                 {adminPasswordError}
@@ -409,6 +510,7 @@ const App: React.FC = () => {
               onClick={() => {
                 setAdminPasswordPrompt(false);
                 setAdminPassword("");
+                setAdminEmail("");
                 setAdminPasswordError("");
               }}
               className="flex-1 bg-slate-100 text-navy font-black py-4 rounded-2xl hover:bg-slate-200 transition-all"
@@ -419,7 +521,7 @@ const App: React.FC = () => {
               onClick={handleAdminPasswordSubmit}
               className="flex-1 bg-navy text-white font-black py-4 rounded-2xl hover:bg-slate-800 transition-all"
             >
-              Access
+              Verify
             </button>
           </div>
         </div>
@@ -520,6 +622,13 @@ const App: React.FC = () => {
               </div>
             )}
             
+            <button 
+              onClick={() => setView('account')}
+              className="flex items-center gap-2 text-white/50 hover:text-white text-xs font-black uppercase tracking-widest transition-colors"
+            >
+              <Settings className="w-4 h-4 text-gold" /> Account
+            </button>
+
             <button onClick={() => signOut(auth)} className="flex items-center gap-2 text-white/50 hover:text-white text-xs font-black uppercase tracking-widest">
               <LogOut className="w-4 h-4 text-gold" /> Logout
             </button>
@@ -553,6 +662,11 @@ const App: React.FC = () => {
                <FeatureLock feature="can_use_biometrics">
                  <WebAuthSettings user={userMetadata} />
                </FeatureLock>
+               <button onClick={() => setView('dashboard')} className="text-slate-400 font-bold uppercase tracking-widest text-[10px] hover:text-navy transition-all">← Back to Records</button>
+            </div>
+          ) : view === 'account' && userMetadata ? (
+            <div className="space-y-12">
+               <AccountSettings user={userMetadata} onUpdate={() => {}} />
                <button onClick={() => setView('dashboard')} className="text-slate-400 font-bold uppercase tracking-widest text-[10px] hover:text-navy transition-all">← Back to Records</button>
             </div>
           ) : (

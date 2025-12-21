@@ -15,16 +15,24 @@ export function withAdminAuth<P extends object>(Component: React.ComponentType<P
     useEffect(() => {
       const unsub = onAuthStateChanged(auth, async (user) => {
         if (!user) {
+          console.log('ADMIN_AUTH: No user logged in');
           setStatus('denied');
           return;
         }
 
+        console.log('ADMIN_AUTH: User logged in:', user.email);
+
         // Force refresh the token to get the latest custom claims
         const tokenResult = await user.getIdTokenResult(true);
         
+        console.log('ADMIN_AUTH: Token claims:', tokenResult.claims);
+        console.log('ADMIN_AUTH: User role:', tokenResult.claims.role);
+        
         if (tokenResult.claims.role === 'admin' || tokenResult.claims.role === 'super_admin') {
+          console.log('ADMIN_AUTH: Authorization GRANTED');
           setStatus('authorized');
         } else {
+          console.log('ADMIN_AUTH: Authorization DENIED - missing admin role');
           setStatus('denied');
         }
       });

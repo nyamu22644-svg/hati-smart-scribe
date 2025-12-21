@@ -1,58 +1,192 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Heart, 
   ShieldCheck, 
   Mail, 
   Smartphone, 
   Clock, 
-  ChevronRight, 
   ShieldAlert, 
   Loader2,
   Lock,
-  UserPlus
+  UserPlus,
+  Info,
+  AlertCircle,
+  Trash2,
+  Send
 } from 'lucide-react';
-import { httpsCallable } from 'firebase/functions';
-import { functions, db } from '@/lib/firebase';
+import { db } from '@/lib/firebase';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { InheritanceInfo, UserRecord } from '@/types';
+import { InheritanceInfo, Beneficiary, UserRecord } from '@/types';
 
 interface InheritanceSettingsProps {
   user: UserRecord;
+  onUpdate?: () => void;
 }
 
-export const InheritanceSettings: React.FC<InheritanceSettingsProps> = ({ user }) => {
-  const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState<Omit<InheritanceInfo, 'status' | 'unlockDate'>>({
-    beneficiaryName: user.inheritance?.beneficiaryName || '',
-    beneficiaryEmail: user.inheritance?.beneficiaryEmail || '',
-    beneficiaryPhone: user.inheritance?.beneficiaryPhone || '',
-    inactivityPeriodDays: user.inheritance?.inactivityPeriodDays || 90
+export const InheritanceSettings: React.FC<InheritanceSettingsProps> = ({ user, onUpdate }) => {
+  const [savingBeneficiary, setSavingBeneficiary] = useState(false);
+  const [inactivityDays, setInactivityDays] = useState(user.inheritance?.inactivityPeriodDays || 90);
+  const [existingBeneficiaries, setExistingBeneficiaries] = useState<Beneficiary[]>([]);
+  
+  const [newBeneficiary, setNewBeneficiary] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    relationship: '',
+    sendNotification: true
   });
 
-  const handleSave = async (e: React.FormEvent) => {
+  // Load existing beneficiaries on mount
+  useEffect(() => {
+    if (user.inheritance?.primary) {
+      setExistingBeneficiaries([
+        {
+          ...user.inheritance.primary,
+          role: 'primary',
+          addedAt: new Date().toISOString(),
+          verified: false
+        } as unknown as Beneficiary
+      ]);
+    }
+    if (user.inheritance?.alternate) {
+      setExistingBeneficiaries(prev => [
+        ...prev,
+        {
+          ...user.inheritance.alternate,
+          role: 'alternate',
+          addedAt: new Date().toISOString(),
+          verified: false
+        } as unknown as Beneficiary
+      ]);
+    }
+  }, [user.inheritance]);
+
+  const handleAddBeneficiary = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
+    
+    if (!newBeneficiary.name || !newBeneficiary.email) {
+      alert("Name and email are required.");
+      return;
+    }
+
+    if (existingBeneficiaries.length >= 2) {
+      alert("You can only designate up to 2 heirs (primary and alternate).");
+      return;
+    }
+
+    setSavingBeneficiary(true);
     try {
-      // 1. Update Firestore
+      const isFirstBeneficiary = existingBeneficiaries.length === 0;
+      const role = isFirstBeneficiary ? 'primary' : 'alternate';
+      
+      const newInheritance: InheritanceInfo = {
+        ...user.inheritance,
+        inactivityPeriodDays: inactivityDays,
+        status: 'active'
+      };
+
+      if (isFirstBeneficiary) {
+        newInheritance.primary = {
+          name: newBeneficiary.name,
+          email: newBeneficiary.email,
+          phone: newBeneficiary.phone,
+          relationship: newBeneficiary.relationship,
+          type: 'primary',
+          status: 'pending',
+          addedAt: new Date()
+        };
+      } else {
+        newInheritance.alternate = {
+          name: newBeneficiary.name,
+          email: newBeneficiary.email,
+          phone: newBeneficiary.phone,
+          relationship: newBeneficiary.relationship,
+          type: 'alternate',
+          status: 'pending',
+          addedAt: new Date()
+        };
+      }
+
       await updateDoc(doc(db, 'users', user.uid), {
-        inheritance: {
-          ...formData,
-          status: 'active'
-        },
+        inheritance: newInheritance,
         updatedAt: serverTimestamp()
       });
 
-      // 2. Inheritance settings saved to Firestore
-      // In production, Cloud Function would send email invitation here
-      console.log("HATI_INHERITANCE: Settings saved. Beneficiary notification queued.");
-      
-      alert("✅ HATI_INHERITANCE: Protocol Initiated!\n\nInheritance plan secured in vault.\n\nBeneficiary will gain access after inactivity period.");
+      // Add to local state
+      const beneficiary: Beneficiary = {
+        name: newBeneficiary.name,
+        email: newBeneficiary.email,
+        phone: newBeneficiary.phone,
+        relationship: newBeneficiary.relationship,
+        type: role as any,
+        role: role as any,
+        status: 'pending',
+        verified: false,
+        addedAt: new Date().toISOString()
+      };
+
+      setExistingBeneficiaries([...existingBeneficiaries, beneficiary]);
+      setNewBeneficiary({
+        name: '',
+        email: '',
+        phone: '',
+        relationship: '',
+        sendNotification: true
+      });
+
+      if (newBeneficiary.sendNotification) {
+        // TODO: Send invitation email via API
+        console.log(`Send invitation to ${newBeneficiary.email}`);
+      }
+
+      alert(`✅ ${role === 'primary' ? 'Primary' : 'Alternate'} heir added successfully!`);
+      onUpdate?.();
     } catch (err) {
       console.error(err);
-      alert("Protocol failure. Check console.");
+      alert("Failed to add heir. Please try again.");
     } finally {
-      setLoading(false);
+      setSavingBeneficiary(false);
+    }
+  };
+
+  const removeBeneficiary = async (index: number) => {
+    if (!window.confirm("Are you sure you want to remove this heir?")) {
+      return;
+    }
+
+    setSavingBeneficiary(true);
+    try {
+      const beneficiary = existingBeneficiaries[index];
+      const newInheritance: InheritanceInfo = {
+        ...user.inheritance,
+        inactivityPeriodDays: inactivityDays
+      };
+
+      if (beneficiary.role === 'primary') {
+        newInheritance.primary = undefined;
+      } else {
+        newInheritance.alternate = undefined;
+      }
+
+      // If no beneficiaries left, set status to inactive
+      if (!newInheritance.primary && !newInheritance.alternate) {
+        newInheritance.status = 'inactive';
+      }
+
+      await updateDoc(doc(db, 'users', user.uid), {
+        inheritance: newInheritance,
+        updatedAt: serverTimestamp()
+      });
+
+      setExistingBeneficiaries(prev => prev.filter((_, i) => i !== index));
+      alert("✅ Heir removed successfully.");
+      onUpdate?.();
+    } catch (err) {
+      console.error(err);
+      alert("Failed to remove heir. Please try again.");
+    } finally {
+      setSavingBeneficiary(false);
     }
   };
 
@@ -69,127 +203,213 @@ export const InheritanceSettings: React.FC<InheritanceSettingsProps> = ({ user }
             <ShieldCheck className="text-navy w-8 h-8" />
           </div>
           <h2 className="text-4xl font-serif font-black tracking-tight">Inheritance Protocol</h2>
-          <p className="text-slate-400 max-w-md font-medium">Designate an heir to ensure your clinical history remains accessible to your family in extreme events.</p>
+          <p className="text-slate-400 max-w-md font-medium">Designate primary and alternate heirs to ensure your clinical history remains accessible to your family in extreme events.</p>
           
           <div className="flex items-center gap-3">
-             <div className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-2 ${status === 'active' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-white/10 text-slate-400 border border-white/10'}`}>
-                <div className={`w-2 h-2 rounded-full ${status === 'active' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-500'}`}></div>
-                Status: {status.toUpperCase()}
-             </div>
-             {user.lastActiveAt && (
-               <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                 Last Heartbeat: {user.lastActiveAt.toDate().toLocaleDateString()}
-               </span>
-             )}
+            <div className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-2 ${status === 'active' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-white/10 text-slate-400 border border-white/10'}`}>
+              <div className={`w-2 h-2 rounded-full ${status === 'active' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-500'}`}></div>
+              Status: {status.toUpperCase()}
+            </div>
+            {user.lastActiveAt && (
+              <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                Last Heartbeat: {new Date((user.lastActiveAt.seconds || 0) * 1000).toLocaleDateString()}
+              </span>
+            )}
           </div>
         </div>
       </div>
 
-      <div className="p-10">
-        <form onSubmit={handleSave} className="space-y-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="space-y-6">
-              <h3 className="text-sm font-black text-navy uppercase tracking-widest flex items-center gap-2">
-                <UserPlus className="w-4 h-4 text-gold" /> Beneficiary Credentials
-              </h3>
-              
+      <div className="p-10 space-y-8">
+        {/* Existing Beneficiaries Display */}
+        {existingBeneficiaries.length > 0 && (
+          <div className="space-y-4">
+            <h3 className="text-lg font-black text-navy uppercase tracking-wide flex items-center gap-2">
+              <UserPlus className="w-5 h-5 text-gold" /> Designated Heirs
+            </h3>
+            <div className="space-y-3">
+              {existingBeneficiaries.map((beneficiary, idx) => (
+                <div 
+                  key={idx}
+                  className="flex items-start justify-between p-6 bg-slate-50 border-2 border-slate-100 rounded-2xl hover:border-gold/50 transition-all"
+                >
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${
+                        beneficiary.role === 'primary' 
+                          ? 'bg-blue-100 text-blue-700 border border-blue-200' 
+                          : 'bg-purple-100 text-purple-700 border border-purple-200'
+                      }`}>
+                        {beneficiary.role === 'primary' ? '⭐ Primary Heir' : '🔄 Alternate Heir'}
+                      </span>
+                      {beneficiary.status === 'verified' && (
+                        <span className="px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest bg-emerald-100 text-emerald-700 border border-emerald-200">
+                          ✓ Verified
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-navy font-bold text-lg">{beneficiary.name}</p>
+                    <p className="text-slate-500">{beneficiary.email}</p>
+                    {beneficiary.phone && <p className="text-slate-500">{beneficiary.phone}</p>}
+                    {beneficiary.relationship && <p className="text-slate-400 text-sm">Relationship: {beneficiary.relationship}</p>}
+                  </div>
+                  <button
+                    onClick={() => removeBeneficiary(idx)}
+                    disabled={savingBeneficiary}
+                    className="text-slate-400 hover:text-red-500 disabled:opacity-50 font-bold px-3 py-2"
+                    title="Remove heir"
+                  >
+                    <Trash2 className="w-5 h-5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Add Beneficiary Form */}
+        {existingBeneficiaries.length < 2 && (
+          <div className="space-y-4">
+            <h3 className="text-lg font-black text-navy uppercase tracking-wide flex items-center gap-2">
+              <UserPlus className="w-5 h-5 text-gold" /> 
+              {existingBeneficiaries.length === 0 ? 'Add Primary Heir' : 'Add Alternate Heir'}
+            </h3>
+            <form onSubmit={handleAddBeneficiary} className="space-y-6">
               <div className="space-y-4">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Full Legal Name</label>
-                  <input 
-                    type="text" 
-                    required
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Full Name</label>
+                  <input
+                    type="text"
+                    value={newBeneficiary.name}
+                    onChange={(e) => setNewBeneficiary({...newBeneficiary, name: e.target.value})}
+                    placeholder="e.g., Jane Doe"
                     className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-5 py-4 outline-none focus:border-gold font-bold transition-all"
-                    placeholder="E.g. Jane Doe"
-                    value={formData.beneficiaryName}
-                    onChange={e => setFormData({...formData, beneficiaryName: e.target.value})}
+                    required
                   />
                 </div>
-
+                
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Official Email</label>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email Address</label>
                   <div className="relative">
                     <Mail className="absolute left-5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
-                    <input 
-                      type="email" 
+                    <input
+                      type="email"
+                      value={newBeneficiary.email}
+                      onChange={(e) => setNewBeneficiary({...newBeneficiary, email: e.target.value})}
+                      placeholder="jane@example.com"
+                      className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-5 py-4 pl-12 outline-none focus:border-gold font-bold transition-all"
                       required
-                      className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl pl-12 pr-5 py-4 outline-none focus:border-gold font-bold transition-all"
-                      placeholder="heir@family.com"
-                      value={formData.beneficiaryEmail}
-                      onChange={e => setFormData({...formData, beneficiaryEmail: e.target.value})}
                     />
                   </div>
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Emergency Contact</label>
-                  <div className="relative">
-                    <Smartphone className="absolute left-5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
-                    <input 
-                      type="tel" 
-                      required
-                      className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl pl-12 pr-5 py-4 outline-none focus:border-gold font-bold transition-all"
-                      placeholder="+254..."
-                      value={formData.beneficiaryPhone}
-                      onChange={e => setFormData({...formData, beneficiaryPhone: e.target.value})}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Phone Number</label>
+                    <div className="relative">
+                      <Smartphone className="absolute left-5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
+                      <input
+                        type="tel"
+                        value={newBeneficiary.phone}
+                        onChange={(e) => setNewBeneficiary({...newBeneficiary, phone: e.target.value})}
+                        placeholder="+254 7XX XXX XXX"
+                        className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-5 py-4 pl-12 outline-none focus:border-gold font-bold transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Relationship</label>
+                    <input
+                      type="text"
+                      value={newBeneficiary.relationship}
+                      onChange={(e) => setNewBeneficiary({...newBeneficiary, relationship: e.target.value})}
+                      placeholder="e.g., Spouse, Parent, Child"
+                      className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-5 py-4 outline-none focus:border-gold font-bold transition-all"
                     />
                   </div>
                 </div>
               </div>
-            </div>
 
-            <div className="space-y-6">
-              <h3 className="text-sm font-black text-navy uppercase tracking-widest flex items-center gap-2">
-                <Clock className="w-4 h-4 text-gold" /> Inactivity Threshold
-              </h3>
-              
-              <div className="bg-slate-50 p-8 rounded-[32px] border-2 border-slate-100 space-y-8">
-                <div className="flex justify-between items-end">
-                  <div>
-                    <p className="text-4xl font-black text-navy">{formData.inactivityPeriodDays}</p>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Days of Silence</p>
-                  </div>
-                  <ShieldAlert className={`w-8 h-8 ${formData.inactivityPeriodDays <= 30 ? 'text-crimson animate-pulse' : 'text-slate-200'}`} />
-                </div>
+              <div className="bg-slate-50 border-2 border-slate-100 rounded-2xl p-4">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={newBeneficiary.sendNotification}
+                    onChange={(e) => setNewBeneficiary({...newBeneficiary, sendNotification: e.target.checked})}
+                    className="w-4 h-4 rounded cursor-pointer accent-gold"
+                  />
+                  <span className="text-sm text-slate-600 font-bold">Send invitation email to designated heir</span>
+                </label>
+              </div>
 
-                <input 
-                  type="range" 
-                  min="30" 
-                  max="365" 
-                  step="1"
-                  className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-navy"
-                  value={formData.inactivityPeriodDays}
-                  onChange={e => setFormData({...formData, inactivityPeriodDays: parseInt(e.target.value) as any})}
-                />
+              <button
+                type="submit"
+                disabled={savingBeneficiary || !newBeneficiary.name || !newBeneficiary.email}
+                className="w-full px-6 py-4 bg-gold text-navy font-bold rounded-2xl hover:bg-gold/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+              >
+                {savingBeneficiary ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4" />
+                    Add {existingBeneficiaries.length === 0 ? 'Primary' : 'Alternate'} Heir
+                  </>
+                )}
+              </button>
+            </form>
+          </div>
+        )}
 
-                <div className="grid grid-cols-3 gap-2">
-                  {[30, 90, 365].map(d => (
-                    <button
-                      key={d}
-                      type="button"
-                      onClick={() => setFormData({...formData, inactivityPeriodDays: d as any})}
-                      className={`py-2 rounded-xl text-[10px] font-black uppercase border-2 transition-all ${formData.inactivityPeriodDays === d ? 'bg-navy border-navy text-white' : 'bg-white border-slate-100 text-slate-400 hover:border-navy/20'}`}
-                    >
-                      {d === 365 ? '1 Year' : `${d} Days`}
-                    </button>
-                  ))}
-                </div>
-
-                <p className="text-[9px] text-slate-400 leading-relaxed font-bold uppercase italic tracking-tighter">
-                  Caution: If you do not access your vault for {formData.inactivityPeriodDays} days, HATI will automatically initiate the transfer of credentials to {formData.beneficiaryEmail || '[Beneficiary]'}.
-                </p>
+        {/* Information Section */}
+        <div className="mt-8 pt-8 border-t border-slate-100">
+          <div className="bg-slate-50 border-2 border-slate-100 rounded-2xl p-6 space-y-4">
+            <h3 className="text-sm font-black text-navy uppercase tracking-widest flex items-center gap-2">
+              <Info className="w-4 h-4 text-gold" /> How It Works
+            </h3>
+            <div className="space-y-3 text-sm text-slate-600">
+              <div className="flex gap-3">
+                <div className="bg-gold text-navy rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0 font-bold text-xs">1</div>
+                <p><span className="font-bold">Designate Heirs:</span> Add primary and (optionally) alternate beneficiaries</p>
+              </div>
+              <div className="flex gap-3">
+                <div className="bg-gold text-navy rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0 font-bold text-xs">2</div>
+                <p><span className="font-bold">Inactivity Detection:</span> System monitors your heartbeat via login activity</p>
+              </div>
+              <div className="flex gap-3">
+                <div className="bg-gold text-navy rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0 font-bold text-xs">3</div>
+                <p><span className="font-bold">Automatic Trigger:</span> After {inactivityDays} days of no activity, heirs receive access request</p>
+              </div>
+              <div className="flex gap-3">
+                <div className="bg-gold text-navy rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0 font-bold text-xs">4</div>
+                <p><span className="font-bold">Verification:</span> Heir confirms identity before accessing clinical data</p>
               </div>
             </div>
           </div>
+        </div>
 
-          <button
-            disabled={loading}
-            type="submit"
-            className="w-full bg-navy text-gold font-black py-6 rounded-[24px] shadow-2xl hover:bg-slate-800 transition-all active:scale-[0.98] flex items-center justify-center gap-4 text-lg"
-          >
-            {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : <><Lock className="w-5 h-5" /> Seal Inheritance Protocol</>}
-          </button>
-        </form>
+        {/* Inactivity Setting */}
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-2">
+              <Clock className="w-4 h-4" /> Inactivity Period (Days)
+            </label>
+            <div className="flex items-center gap-4">
+              <input 
+                type="range" 
+                min="30" 
+                max="365" 
+                value={inactivityDays}
+                onChange={(e) => setInactivityDays(parseInt(e.target.value))}
+                className="flex-1 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-gold"
+              />
+              <span className="text-2xl font-black text-navy w-16 text-right">{inactivityDays}</span>
+            </div>
+            <p className="text-xs text-slate-500 ml-1">Trigger inheritance protocol after {inactivityDays} days of no login</p>
+          </div>
+        </div>
       </div>
     </div>
   );

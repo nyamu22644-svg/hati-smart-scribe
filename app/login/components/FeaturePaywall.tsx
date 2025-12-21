@@ -1,14 +1,17 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, ShieldAlert, Lock } from 'lucide-react';
 import { SUBSCRIPTION_PLANS } from "@/config/subscriptionPlans";
 import { UpgradeCard } from './UpgradeCard';
+import { db } from '@/lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
 
 interface FeaturePaywallProps {
   title: string;
   subtitle: string;
   onClose: () => void;
   onSubscribe: (planId: string) => void;
+  onPaymentSuccess?: () => void;
   currentPlanId?: string;
 }
 
@@ -21,8 +24,30 @@ export const FeaturePaywall: React.FC<FeaturePaywallProps> = ({
   subtitle, 
   onClose, 
   onSubscribe,
+  onPaymentSuccess,
   currentPlanId = 'essential'
 }) => {
+  const [dynamicTitle, setDynamicTitle] = useState(title);
+  const [dynamicSubtitle, setDynamicSubtitle] = useState(subtitle);
+  const [fomoMessage, setFomoMessage] = useState('');
+
+  useEffect(() => {
+    const loadMarketingMessages = async () => {
+      try {
+        const configDoc = await getDoc(doc(db, 'config', 'marketing_settings'));
+        if (configDoc.exists()) {
+          const config = configDoc.data();
+          if (config.paywallTitle) setDynamicTitle(config.paywallTitle);
+          if (config.paywallSubtitle) setDynamicSubtitle(config.paywallSubtitle);
+          if (config.fomoMessage) setFomoMessage(config.fomoMessage);
+        }
+      } catch (error) {
+        console.error('Error loading marketing messages:', error);
+      }
+    };
+
+    loadMarketingMessages();
+  }, []);
   return (
     <div className="fixed inset-0 z-[2000] flex items-center justify-center p-6 bg-navy/80 backdrop-blur-md animate-in fade-in duration-300">
       <div className="max-w-6xl w-full bg-[#050B18] rounded-[60px] border border-white/5 shadow-2xl overflow-hidden relative max-h-[90vh] flex flex-col">
@@ -40,11 +65,16 @@ export const FeaturePaywall: React.FC<FeaturePaywallProps> = ({
               <Lock className="w-8 h-8 text-gold" />
             </div>
             <h2 className="text-4xl md:text-5xl font-serif font-black text-white mb-4 tracking-tight">
-              {title}
+              {dynamicTitle}
             </h2>
             <p className="text-slate-400 text-lg font-medium">
-              {subtitle}
+              {dynamicSubtitle}
             </p>
+            {fomoMessage && (
+              <div className="mt-6 p-4 bg-gold/10 border border-gold/20 rounded-[20px]">
+                <p className="text-gold text-sm font-bold">{fomoMessage}</p>
+              </div>
+            )}
           </header>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">

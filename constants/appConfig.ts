@@ -10,7 +10,7 @@ export const APP_CONFIG = {
   SUPPORT_EMAIL: "concierge@hati-registry.com",
   
   // Security Protocols
-  AUTO_LOCK_TIMEOUT_MS: 3000, // Duration of inactivity before vault lockdown
+  AUTO_LOCK_TIMEOUT_MS: 900000, // 15 minutes: Duration of inactivity before vault lockdown
   
   // Financial & Localization
   DEFAULT_CURRENCY: "KES",

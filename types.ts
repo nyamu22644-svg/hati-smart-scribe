@@ -56,12 +56,23 @@ export interface GuardianInfo {
 }
 
 // Added InheritanceInfo type for Inheritance Protocol feature
+export interface Beneficiary {
+  name: string;
+  email: string;
+  phone: string;
+  relationship?: string;
+  type: 'primary' | 'alternate';
+  role?: 'primary' | 'alternate';
+  status: 'pending' | 'active' | 'verified';
+  verified?: boolean;
+  addedAt: string;
+}
+
 export interface InheritanceInfo {
-  beneficiaryName: string;
-  beneficiaryEmail: string;
-  beneficiaryPhone: string;
+  primary?: Beneficiary;
+  alternate?: Beneficiary;
   inactivityPeriodDays: number;
-  status: 'inactive' | 'pending' | 'active' | 'escrow' | 'unlocked';
+  status: 'inactive' | 'active';
   unlockDate?: number;
 }
 
@@ -79,6 +90,8 @@ export interface UserRecord {
   guardians?: GuardianInfo[];
   // Added inheritance property to UserRecord
   inheritance?: InheritanceInfo;
+  // Added webauthn flag for biometric login
+  webauthnEnabled?: boolean;
 }
 
 export interface PlanConfig {

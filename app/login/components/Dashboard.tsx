@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Plus, 
   Calendar, 
@@ -11,11 +11,16 @@ import {
   ChevronRight,
   ShieldCheck,
   Search,
-  ShieldAlert
+  ShieldAlert,
+  X,
+  Megaphone
 } from 'lucide-react';
 // Import DecryptedMedicalRecord to fix missing property errors on lines 30-31
 import { MedicalRecord, DecryptedMedicalRecord, DocumentType } from '@/types';
 import ShareQR from './ShareQR';
+import { HealthInsights } from './HealthInsights';
+import { db } from '@/lib/firebase';
+import { doc, getDoc, query, collection, where, getDocs } from 'firebase/firestore';
 
 interface DashboardProps {
   // Use DecryptedMedicalRecord array to allow access to patient_name and diagnosis
@@ -26,6 +31,33 @@ interface DashboardProps {
 const Dashboard: React.FC<DashboardProps> = ({ records, onUploadClick }) => {
   const [sharingRecord, setSharingRecord] = useState<MedicalRecord | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [campaignMessage, setCampaignMessage] = useState<any>(null);
+  const [showCampaign, setShowCampaign] = useState(true);
+
+  // Load campaign messages
+  useEffect(() => {
+    const loadCampaigns = async () => {
+      try {
+        // Get all campaigns
+        const campaignsRef = collection(db, 'campaigns');
+        const campaignsSnapshot = await getDocs(campaignsRef);
+        
+        // Find an active campaign that matches user segment
+        const activeCampaigns = campaignsSnapshot.docs
+          .map(doc => doc.data())
+          .filter(c => c.active && c.targetSegments?.includes('all'));
+        
+        if (activeCampaigns.length > 0) {
+          // Show the first active campaign
+          setCampaignMessage(activeCampaigns[0]);
+        }
+      } catch (error) {
+        console.error('Error loading campaigns:', error);
+      }
+    };
+
+    loadCampaigns();
+  }, []);
 
   const filteredRecords = records
     .filter(r => 
@@ -37,6 +69,29 @@ const Dashboard: React.FC<DashboardProps> = ({ records, onUploadClick }) => {
 
   return (
     <div className="max-w-6xl mx-auto py-8 px-4">
+      {campaignMessage && showCampaign && (
+        <div className="mb-8 p-6 bg-gradient-to-r from-gold/20 to-gold/10 border border-gold/30 rounded-[24px] flex items-start justify-between">
+          <div className="flex items-start gap-4">
+            <Megaphone className="w-6 h-6 text-gold flex-shrink-0 mt-1" />
+            <div>
+              <h3 className="font-bold text-navy text-lg">{campaignMessage.title}</h3>
+              <p className="text-slate-600 text-sm mt-2">{campaignMessage.message}</p>
+              {campaignMessage.ctaText && (
+                <button className="mt-3 text-sm font-bold text-gold hover:text-gold/80 transition-colors">
+                  {campaignMessage.ctaText} →
+                </button>
+              )}
+            </div>
+          </div>
+          <button 
+            onClick={() => setShowCampaign(false)}
+            className="text-slate-400 hover:text-slate-600 transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+      )}
+
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-10">
         <div>
           <h1 className="text-3xl font-extrabold text-slate-900 flex items-center gap-2">
@@ -44,6 +99,20 @@ const Dashboard: React.FC<DashboardProps> = ({ records, onUploadClick }) => {
           </h1>
           <p className="text-slate-500 mt-1">End-to-end encrypted health timeline.</p>
         </div>
+        <button
+          onClick={onUploadClick}
+          className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-indigo-200 transition-all active:scale-95"
+        >
+          <Plus className="w-5 h-5" /> Add New Record
+        </button>
+      </header>
+
+      {/* Health Insights Section */}
+      {records.length > 0 && (
+        <div className="mb-10">
+          <HealthInsights records={records} />
+        </div>
+      )}
         <button
           onClick={onUploadClick}
           className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-indigo-200 transition-all active:scale-95"

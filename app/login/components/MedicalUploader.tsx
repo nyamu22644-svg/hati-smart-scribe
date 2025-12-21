@@ -10,8 +10,11 @@ import {
   ChevronRight, 
   ArrowLeft,
   Info,
-  Zap
+  Zap,
+  Download,
+  FileText
 } from 'lucide-react';
+import jsPDF from 'jspdf';
 import { processRecordAI } from '@/services/gemini';
 import { encrypt } from '@/lib/security';
 import { SecureScannerGateway } from './SecureScannerGateway';
@@ -99,6 +102,157 @@ const MedicalUploader: React.FC<MedicalUploaderProps> = ({ profiles, onRecordSav
       encryptedPayload: encryptedPayload
     };
     onRecordSaved(newRecord);
+  };
+
+  const generatePDF = async () => {
+    if (!extractedData) return;
+    try {
+      const doc = new jsPDF();
+      let yPosition = 20;
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 15;
+      const maxWidth = pageWidth - 2 * margin;
+
+      // Title
+      doc.setFontSize(18);
+      doc.setFont('helvetica', 'bold');
+      doc.text('HATI Medical Record Report', margin, yPosition);
+      yPosition += 8;
+
+      // Subtitle
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(120, 120, 120);
+      doc.text('Encrypted Medical Registry System', margin, yPosition);
+      yPosition += 10;
+
+      // Divider line
+      doc.setDrawColor(200, 200, 200);
+      doc.line(margin, yPosition, pageWidth - margin, yPosition);
+      yPosition += 6;
+
+      // Helper function to check if new page is needed
+      const checkNewPage = (lines: number = 1) => {
+        if (yPosition + lines * 7 > pageHeight - 20) {
+          doc.addPage();
+          yPosition = 20;
+        }
+      };
+
+      // Patient Information
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(0, 0, 0);
+      doc.text('Patient Information', margin, yPosition);
+      yPosition += 7;
+
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Name: ${extractedData.patient_name}`, margin + 3, yPosition);
+      yPosition += 6;
+      doc.text(`Record Date: ${extractedData.date}`, margin + 3, yPosition);
+      yPosition += 10;
+
+      // Clinical Assessment
+      checkNewPage(3);
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Clinical Assessment', margin, yPosition);
+      yPosition += 7;
+
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      const diagnosisLines = doc.splitTextToSize(extractedData.diagnosis.join(', '), maxWidth - 3);
+      doc.text(diagnosisLines, margin + 3, yPosition);
+      yPosition += diagnosisLines.length * 6 + 4;
+
+      // Vital Signs
+      checkNewPage(5);
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Vital Signs', margin, yPosition);
+      yPosition += 7;
+
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Blood Pressure: ${extractedData.vitals.systolic}/${extractedData.vitals.diastolic} mmHg`, margin + 3, yPosition);
+      yPosition += 6;
+      doc.text(`Heart Rate: ${extractedData.vitals.heartRate} bpm`, margin + 3, yPosition);
+      yPosition += 6;
+      doc.text(`Temperature: ${extractedData.vitals.temperature}°C`, margin + 3, yPosition);
+      yPosition += 6;
+      doc.text(`Glucose Level: ${extractedData.vitals.glucose} mg/dL`, margin + 3, yPosition);
+      yPosition += 10;
+
+      // Medications
+      if (extractedData.medications.length > 0) {
+        checkNewPage(3);
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Medications', margin, yPosition);
+        yPosition += 7;
+
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        extractedData.medications.forEach(med => {
+          doc.text(`• ${med.name} - ${med.dosage}`, margin + 3, yPosition);
+          yPosition += 6;
+        });
+        yPosition += 4;
+      }
+
+      // Allergies
+      if (extractedData.allergies.length > 0) {
+        checkNewPage(3);
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(200, 0, 0);
+        doc.text('⚠️  ALLERGIES (CRITICAL)', margin, yPosition);
+        yPosition += 7;
+
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(150, 0, 0);
+        extractedData.allergies.forEach(allergy => {
+          doc.text(`• ${allergy}`, margin + 3, yPosition);
+          yPosition += 6;
+        });
+        yPosition += 4;
+      }
+
+      // Clinical Alerts
+      if (extractedData.warnings.length > 0) {
+        checkNewPage(3);
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(200, 120, 0);
+        doc.text('Clinical Alerts', margin, yPosition);
+        yPosition += 7;
+
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(0, 0, 0);
+        extractedData.warnings.forEach(warning => {
+          const warningLines = doc.splitTextToSize(`⚠️  ${warning}`, maxWidth - 3);
+          doc.text(warningLines, margin + 3, yPosition);
+          yPosition += warningLines.length * 6 + 2;
+        });
+      }
+
+      // Footer
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(120, 120, 120);
+      doc.text('This document is encrypted and intended for medical purposes only.', margin, pageHeight - 15);
+      doc.text(`Generated: ${new Date().toLocaleString()} | HATI Medical Registry System`, margin, pageHeight - 10);
+
+      // Download
+      doc.save(`medical-record-${extractedData.date}.pdf`);
+    } catch (err: any) {
+      console.error('PDF generation error:', err);
+      alert('Failed to generate PDF. Please try again.');
+    }
   };
 
   return (
@@ -340,6 +494,12 @@ const MedicalUploader: React.FC<MedicalUploaderProps> = ({ profiles, onRecordSav
                   className="w-full bg-navy hover:bg-slate-800 text-gold font-black py-6 rounded-[32px] shadow-2xl shadow-navy/20 flex items-center justify-center gap-4 transition-all active:scale-95 text-lg"
                 >
                   <Lock className="w-6 h-6" /> Certify & Seal to HATI Registry
+                </button>
+                <button
+                  onClick={generatePDF}
+                  className="w-full bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-black py-6 rounded-[32px] shadow-lg shadow-emerald-100/50 flex items-center justify-center gap-4 transition-all active:scale-95 text-lg border-2 border-emerald-200"
+                >
+                  <Download className="w-6 h-6" /> Download as PDF Report
                 </button>
               </div>
             </div>

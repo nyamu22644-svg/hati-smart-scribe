@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { Crown, Zap } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Crown, Zap, RefreshCw } from 'lucide-react';
 import { FeatureKey } from '@/types';
 import { usePermission } from '@/hooks/usePermission';
 import { FeaturePaywall } from './FeaturePaywall';
@@ -19,6 +19,14 @@ interface FeatureLockProps {
 export const FeatureLock: React.FC<FeatureLockProps> = ({ feature, children, fallback }) => {
   const { allowed, loading } = usePermission(feature);
   const [showModal, setShowModal] = useState(false);
+  const [permissionRefresh, setPermissionRefresh] = useState(0);
+  
+  // Re-check permissions when user returns from payment
+  useEffect(() => {
+    if (showModal === false && permissionRefresh > 0) {
+      // Permissions have been refreshed, component will re-render with new state
+    }
+  }, [showModal, permissionRefresh]);
 
   if (loading) return null;
 
@@ -33,7 +41,17 @@ export const FeatureLock: React.FC<FeatureLockProps> = ({ feature, children, fal
     // This would typically trigger the IntaSend payment flow
     console.log(`HATI_AUTHORITY: Initiating subscription for ${planId}`);
     window.dispatchEvent(new CustomEvent('HATI_NAVIGATE_PREMIUM'));
+    // Don't close modal yet, wait for payment callback
+  };
+
+  const handlePaymentSuccess = () => {
+    // Payment was successful, close modal and trigger permission refresh
     setShowModal(false);
+    setPermissionRefresh(prev => prev + 1);
+    // Show a loading state while permissions refresh
+    setTimeout(() => {
+      window.location.reload(); // Refresh to get updated permissions
+    }, 500);
   };
 
   const getLockContext = () => {
@@ -96,6 +114,7 @@ export const FeatureLock: React.FC<FeatureLockProps> = ({ feature, children, fal
           subtitle={context.subtitle}
           onClose={() => setShowModal(false)}
           onSubscribe={handleSubscribe}
+          onPaymentSuccess={handlePaymentSuccess}
         />
       )}
     </div>

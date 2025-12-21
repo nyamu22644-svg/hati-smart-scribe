@@ -1,8 +1,7 @@
-
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { MedicalRecordData } from "@/types";
 
-// Correct: Initialize ai client at the top level using import.meta.env for Vite
+// Initialize Google Generative AI client
 const ai = new GoogleGenerativeAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || "" });
 
 /**
@@ -24,67 +23,47 @@ export const processRecordAI = async (base64Image: string): Promise<MedicalRecor
   const prompt = "Please analyze this medical document and extract structured patient data, diagnoses, medications, and vitals according to the defined schema.";
 
   try {
-    const response: GenerateContentResponse = await ai.models.generateContent({
-      // Correct: Use gemini-3-pro-preview for complex reasoning and multimodal tasks
-      model: 'gemini-3-pro-preview',
-      contents: {
-        parts: [
-          {
-            inlineData: {
-              mimeType: 'image/jpeg',
-              data: base64Image.split(',')[1] || base64Image,
-            },
-          },
-          { text: prompt }
-        ],
-      },
-      config: {
-        // Correct: System instruction placed in config
-        systemInstruction: systemInstruction,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            patient_name: { type: Type.STRING },
-            date: { type: Type.STRING, description: 'Format: YYYY-MM-DD' },
-            diagnosis: { type: Type.ARRAY, items: { type: Type.STRING } },
-            medications: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  name: { type: Type.STRING },
-                  dosage: { type: Type.STRING }
-                },
-                propertyOrdering: ["name", "dosage"]
-              }
-            },
-            vitals: {
-              type: Type.OBJECT,
-              properties: {
-                systolic: { type: Type.NUMBER, description: 'mmHg' },
-                diastolic: { type: Type.NUMBER, description: 'mmHg' },
-                heart_rate: { type: Type.NUMBER, description: 'bpm' },
-                temperature: { type: Type.NUMBER, description: 'Celsius' },
-                glucose: { type: Type.NUMBER, description: 'mg/dL' }
+    // Get the generative model with proper configuration
+    const model = ai.getGenerativeModel({ model: 'gemini-1.5-pro' });
+
+    const response = await model.generateContent({
+      contents: [
+        {
+          parts: [
+            {
+              inlineData: {
+                mimeType: 'image/jpeg',
+                data: base64Image.split(',')[1] || base64Image,
               },
-              propertyOrdering: ["systolic", "diastolic", "heart_rate", "temperature", "glucose"]
             },
-            warnings: { type: Type.ARRAY, items: { type: Type.STRING } },
-            document_type: { 
-              type: Type.STRING, 
-              description: 'The type of medical document: Prescription, Lab Report, Imaging, Summary, or Other'
-            }
-          },
-          required: ["patient_name", "date", "diagnosis", "medications", "vitals", "warnings", "document_type"],
-          propertyOrdering: ["patient_name", "date", "diagnosis", "medications", "vitals", "warnings", "document_type"]
-        }
-      }
+            { text: `${systemInstruction}\n\n${prompt}` }
+          ],
+        },
+      ],
     });
 
-    // Correct: Directly access .text property from GenerateContentResponse
-    const jsonStr = response.text.trim();
-    return JSON.parse(jsonStr);
+    // Extract the text response
+    const jsonStr = response.response.text().trim();
+    
+    // Parse and validate the response
+    const parsedData = JSON.parse(jsonStr);
+    
+    // Ensure all required fields exist with defaults
+    return {
+      patient_name: parsedData.patient_name || 'Unknown Patient',
+      date: parsedData.date || new Date().toISOString().split('T')[0],
+      diagnosis: Array.isArray(parsedData.diagnosis) ? parsedData.diagnosis : ['Not specified'],
+      medications: Array.isArray(parsedData.medications) ? parsedData.medications : [],
+      allergies: Array.isArray(parsedData.allergies) ? parsedData.allergies : [],
+      vitals: {
+        systolic: parsedData.vitals?.systolic || 0,
+        diastolic: parsedData.vitals?.diastolic || 0,
+        heartRate: parsedData.vitals?.heart_rate || parsedData.vitals?.heartRate || 0,
+        temperature: parsedData.vitals?.temperature || 0,
+        glucose: parsedData.vitals?.glucose || 0
+      },
+      warnings: Array.isArray(parsedData.warnings) ? parsedData.warnings : []
+    };
   } catch (error) {
     console.error("Gemini Extraction Error:", error);
     throw new Error("Could not process document. Ensure high lighting and clarity.");

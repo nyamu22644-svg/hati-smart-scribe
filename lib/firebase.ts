@@ -1,6 +1,6 @@
 import { initializeApp, getApp, getApps } from "firebase/app";
 // Consolidated auth imports to help the environment resolve named exports correctly and fix line-specific member detection errors
-import { getAuth, onAuthStateChanged, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signInWithCustomToken } from "firebase/auth";
+import { getAuth, onAuthStateChanged, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signInWithCustomToken, setPersistence, browserSessionPersistence } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getFunctions } from "firebase/functions";
 
@@ -21,6 +21,11 @@ const firebaseConfig = {
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
 export const auth = getAuth(app);
+
+// Set SESSION persistence - users must log in again when browser closes
+setPersistence(auth, browserSessionPersistence).catch(err => 
+  console.warn('HATI_SECURITY: Session persistence setup:', err)
+);
 export const db = getFirestore(app);
 export const functions = getFunctions(app);
 
