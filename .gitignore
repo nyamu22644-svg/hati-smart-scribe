@@ -24,3 +24,8 @@ dist-ssr
 *.sw?
 
 .vercel
+# Secrets & Firebase
+hati-certified-firebase-adminsdk-fbsvc-856ad3c65d.json
+*.json
+.env.local
+GEMINI_API_KEY
