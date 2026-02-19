@@ -54,6 +54,24 @@ npm run dev
 - Frontend: Vercel (static)
 - Optional backend: Vercel Serverless Function — set `GEMINI_API_KEY` on Vercel only if enabling LLM features
 
+## Screenshots
+
+### Landing Page
+Privacy-first positioning and onboarding.
+![HATI Landing](./screenshots/01-landing.png)
+
+### Medical Record Registry
+Upload, verify, and certify clinical records with encrypted storage.
+![Official Record](./screenshots/02-official-record.png)
+
+### Biometric Security
+Military-grade face/fingerprint authentication for vault access.
+![Biometric Authentication](./screenshots/03-biometric-auth.png)
+
+### Inheritance Protocol
+Designate heirs to ensure family access to medical history during emergencies.
+![Inheritance Protocol](./screenshots/04-inheritance.png)
+
 ## Evaluation & Metrics
 - OCR accuracy (character error rate), field-level precision/recall
 - Processing time (ms) on mobile vs desktop
