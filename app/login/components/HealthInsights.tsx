@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { TrendingUp, AlertCircle, CheckCircle, Sparkles, Heart, Pill, Activity, Loader2 } from 'lucide-react';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+// Using local heuristics for insights to avoid external LLM billing
 import { MedicalRecord, MedicalRecordData } from '@/types';
 import { decrypt } from '@/lib/security';
 
@@ -55,48 +55,51 @@ export const HealthInsights: React.FC<HealthInsightsProps> = ({ records, userNam
         return;
       }
 
-      // Use Gemini AI to generate insights
-      const ai = new GoogleGenerativeAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || '' });
-      const model = ai.getGenerativeModel({ model: 'gemini-pro' });
+      // Local heuristic-based insights (no external LLM required)
+      const localInsights: Insight[] = [];
 
-      const medicalSummary = decryptedRecords.map(r => `
-        Date: ${r.date}
-        Diagnoses: ${r.diagnosis?.join(', ') || 'None'}
-        Medications: ${r.medications?.map(m => `${m.name} ${m.dosage}`).join(', ') || 'None'}
-        Vitals: BP=${r.vitals?.systolic}/${r.vitals?.diastolic}, HR=${r.vitals?.heartRate}
-        Allergies: ${r.allergies?.join(', ') || 'None'}
-      `).join('\n---\n');
-
-      const prompt = `
-        Analyze this patient's medical history and provide 3-4 actionable health insights in JSON format.
-        Focus on: risk factors, positive trends, and recommended actions.
-        
-        Medical History:
-        ${medicalSummary}
-        
-        Respond ONLY with valid JSON array (no markdown, no code blocks):
-        [
-          {
-            "category": "risk" | "positive" | "action",
-            "title": "Insight title",
-            "description": "2-sentence explanation"
-          }
-        ]
-      `;
-
-      const result = await model.generateContent(prompt);
-      const responseText = result.response.text();
-      
-      // Parse JSON response
-      const jsonMatch = responseText.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-        const parsedInsights = JSON.parse(jsonMatch[0]);
-        const insightsWithIcons = parsedInsights.map((insight: any) => ({
-          ...insight,
-          icon: getIconForCategory(insight.category)
-        }));
-        setInsights(insightsWithIcons);
+      // Check for high blood pressure or abnormal vitals
+      const recent = decryptedRecords[0];
+      if (recent.vitals?.systolic && recent.vitals.systolic >= 140) {
+        localInsights.push({
+          category: 'risk',
+          title: 'Elevated Blood Pressure',
+          description: `Recent reading shows BP ${recent.vitals.systolic}/${recent.vitals.diastolic}. Consider evaluation for hypertension and medication review.`,
+          icon: <AlertCircle className="w-5 h-5" />
+        });
       }
+
+      // Medication interaction warnings (simple check for Warfarin + NSAID)
+      const meds = decryptedRecords.flatMap(r => r.medications || []);
+      const names = meds.map(m => m.name.toLowerCase());
+      if (names.includes('warfarin') && names.some(n => n.includes('ibuprofen') || n.includes('naproxen') || n.includes('aspirin'))) {
+        localInsights.push({
+          category: 'risk',
+          title: 'Potential Drug Interaction',
+          description: 'Warfarin with NSAIDs may increase bleeding risk. Review medications with your provider.',
+          icon: <AlertCircle className="w-5 h-5" />
+        });
+      }
+
+      // Positive trend: regular records
+      if (decryptedRecords.length > 3) {
+        localInsights.push({
+          category: 'positive',
+          title: 'Consistent Records',
+          description: 'You have multiple records over time — good for monitoring trends.',
+          icon: <CheckCircle className="w-5 h-5" />
+        });
+      }
+
+      // Action recommendation
+      localInsights.push({
+        category: 'action',
+        title: 'Schedule Preventive Check-up',
+        description: 'Based on your records, consider a preventive visit to review medications and vitals.',
+        icon: <TrendingUp className="w-5 h-5" />
+      });
+
+      setInsights(localInsights);
     } catch (err: any) {
       console.error('Health Insights error:', err);
       setError('Unable to generate insights. Please try again later.');

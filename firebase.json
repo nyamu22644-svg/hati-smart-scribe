@@ -1,0 +1,9 @@
+{
+  "projects": {
+    "default": "hati-certified"
+  },
+  "functions": {
+    "source": "functions",
+    "runtime": "nodejs18"
+  }
+}

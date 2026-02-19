@@ -1,7 +1,6 @@
-
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
-import * as cors from 'cors';
+import cors from 'cors';
 import {
   generateRegistrationOptions,
   verifyRegistrationResponse,
@@ -30,7 +29,7 @@ export const generateRegOptions = functions.https.onCall(async (request) => {
   const userData = userDoc.data();
   if (!userData) throw new functions.https.HttpsError('not-found', 'Identity not found.');
   const options = await generateRegistrationOptions({
-    rpName, rpID, userID: Buffer.from(uid), userName: userData.email, userDisplayName: userData.name,
+    rpName, rpID, userID: uid, userName: userData.email, userDisplayName: userData.name,
     attestationType: 'none', authenticatorSelection: { residentKey: 'required', userVerification: 'preferred' },
   });
   await db.collection('users').doc(uid).collection('challenges').doc('registration').set({
