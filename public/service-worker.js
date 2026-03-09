@@ -1,11 +1,11 @@
-const CACHE_VERSION = 'hati-v1';
+const CACHE_VERSION = 'hati-v2';
 const CACHE_URLS = [
   '/',
   '/index.html',
   '/manifest.json',
-  '/icons/icon.svg',
-  '/icons/icon-192x192.svg',
-  '/icons/icon-512x512.svg',
+  '/icons/icon-192x192.png',
+  '/icons/icon-512x512.png',
+  '/icons/apple-touch-icon.png',
 ];
 
 // Install event - cache resources
